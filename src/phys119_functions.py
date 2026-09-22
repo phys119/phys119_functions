@@ -106,7 +106,41 @@ def _warn(message):
 def _fail(message):
     """Show an error and stop the cell, so nothing downstream uses a bad result."""
     _show('Error', message, _ERROR_STYLE)
-    raise Phys119Error(message.split('\n')[0]) from None
+    lines = message.split('\n')
+    summary = lines[0]
+    for line in lines[1:]:
+        if line.startswith('  got '):
+            summary = f"{summary} {line.strip()}"
+            break
+    raise Phys119Error(summary) from None
+
+
+def _shown(value):
+    """A short repr, so a huge value cannot flood the message."""
+    text = repr(value)
+    return text if len(text) <= 60 else text[:57] + "..."
+
+
+def _as_finite_number(value):
+    """Return value as a float, or None if it is not an ordinary number."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if np.isfinite(number) else None
+
+
+def _finite_result(value, fn_name):
+    """Return value as a plain float, or stop if the calculation broke down."""
+    if not np.isfinite(value):
+        _fail(
+            f"{fn_name} could not produce a number from these measurements.\n"
+            "\n"
+            "The calculation overflowed, which usually means one or more values\n"
+            "are far larger than they should be. Check the measurements you\n"
+            "passed in."
+        )
+    return float(value)
 
 
 def _install_traceback_suppressor():
@@ -177,9 +211,20 @@ def t_score(A, dA, B, dB):
     for name, val in [('A', A), ('dA', dA), ('B', B), ('dB', dB)]:
         if not isinstance(val, (int, float, np.number)):
             _fail(
-                f"{name} must be a number, got {type(val).__name__} {val!r}.\n"
+                f"{name} must be a number.\n"
+                f"  got {type(val).__name__}: {_shown(val)}\n"
                 "  Argument order: t_score(A, dA, B, dB)\n"
                 "  Example:        t_score(10, 2, 12, 3)  ->  0.5547"
+            )
+        if _as_finite_number(val) is None:
+            _fail(
+                f"{name} must be an ordinary number.\n"
+                f"  got {_shown(val)}\n"
+                "\n"
+                "A nan usually comes from a blank spreadsheet cell, an inf from\n"
+                "dividing by zero somewhere earlier, and a value too large to\n"
+                "work with from a typing slip. Check that value, then run this\n"
+                "cell again."
             )
 
     if dA < 0 or dB < 0:
@@ -218,7 +263,9 @@ def t_score(A, dA, B, dB):
             "Check that you have entered your uncertainties correctly."
         )
 
-    return float(abs(A - B) / np.sqrt(dA**2 + dB**2))
+    with np.errstate(all='ignore'):
+        score = abs(A - B) / np.sqrt(dA**2 + dB**2)
+    return _finite_result(score, 't_score')
 
 
 def _check_1d_data(data, fn_name):
@@ -229,23 +276,27 @@ def _check_1d_data(data, fn_name):
     """
     example = f"  Example: {fn_name}([10.1, 10.3, 9.8])"
 
-    def _shown(val):
-        text = repr(val)
-        return text if len(text) <= 60 else text[:57] + "..."
-
     if isinstance(data, (int, float, np.number)):
         _fail(
-            "data must be a list or numpy array of measurements, "
-            f"got the single number {_shown(data)}.\n"
+            "data must be a list or numpy array of measurements.\n"
+            f"  got the single number {_shown(data)}\n"
             f"{example}"
         )
 
     try:
         arr = np.asarray(data, dtype=float)
+    except OverflowError:
+        _fail(
+            "data contains a value too large to work with.\n"
+            f"  {_shown(data)}\n"
+            "\n"
+            "Check for a typing slip such as an extra digit or a missing\n"
+            "decimal point, then run this cell again."
+        )
     except (TypeError, ValueError):
         _fail(
-            "data must be a list or numpy array of numbers, "
-            f"got {type(data).__name__} {_shown(data)}.\n"
+            "data must be a list or numpy array of numbers.\n"
+            f"  got {type(data).__name__}: {_shown(data)}\n"
             f"{example}"
         )
 
@@ -263,6 +314,16 @@ def _check_1d_data(data, fn_name):
             "\n"
             "Blank cells in a spreadsheet are read in as nan. Fill them in or\n"
             "remove them from the array, then run this cell again."
+        )
+
+    if not np.all(np.isfinite(arr)):
+        _fail(
+            "data contains infinite values.\n"
+            f"  infinite values at indices: {np.where(~np.isfinite(arr))[0].tolist()}\n"
+            "\n"
+            "An inf usually comes from dividing by zero somewhere earlier, or\n"
+            "from a spreadsheet cell holding something like 1/0. Check those\n"
+            "values, then run this cell again."
         )
 
     if arr.size < 2:
@@ -303,7 +364,9 @@ def standard_deviation(data):
     """
     arr = _check_1d_data(data, 'standard_deviation')
 
-    return float(_sample_std(arr))
+    with np.errstate(all='ignore'):
+        spread = _sample_std(arr)
+    return _finite_result(spread, 'standard_deviation')
 
 
 @_friendly_errors
@@ -328,4 +391,6 @@ def standard_unc_of_mean(data):
     arr = _check_1d_data(data, 'standard_unc_of_mean')
 
     N = len(arr)
-    return float(_sample_std(arr) / np.sqrt(N))
+    with np.errstate(all='ignore'):
+        unc = _sample_std(arr) / np.sqrt(N)
+    return _finite_result(unc, 'standard_unc_of_mean')

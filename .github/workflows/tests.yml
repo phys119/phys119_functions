@@ -24,3 +24,22 @@ jobs:
       - name: Run tests against the installed package
         working-directory: tests
         run: python -m pytest -q
+
+  server-versions:
+    # What phas119.phas.ubc.ca actually runs, so a numpy difference cannot
+    # reach students without failing here first.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Install with the server's numpy
+        run: |
+          python -m pip install ".[test]"
+          python -m pip install "numpy==1.26.0"
+      - name: Show what is installed
+        run: python -c "import numpy, sys; print(sys.version); print(numpy.__version__)"
+      - name: Run tests against the installed package
+        working-directory: tests
+        run: python -m pytest -q

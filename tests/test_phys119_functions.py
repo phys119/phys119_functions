@@ -4,6 +4,7 @@ Run with: python -m pytest
 """
 
 import io
+import warnings
 from contextlib import redirect_stderr
 
 import numpy as np
@@ -79,6 +80,8 @@ def test_accepts_sequence_types(data):
     ({"a": 1}, "list or numpy array of numbers"),
     (np.array([[1.0, 2.0], [3.0, 4.0]]), "one-dimensional"),
     ([1.0, float("nan"), 3.0], "missing values"),
+    ([1.0, float("inf"), 3.0], "infinite values"),
+    ([1.0, float("-inf")], "infinite values"),
     ([4.2], "at least 2 measurements"),
     ([], "at least 2 measurements"),
 ])
@@ -116,6 +119,66 @@ def test_t_score_warns_on_large_uncertainty_but_still_returns():
     result, message = call(pf.t_score, 1, 5, 12, 3)
     assert result is not None
     assert "look large relative" in message
+
+
+# Non-finite values and calculations that break down
+
+@pytest.mark.parametrize("fn", [pf.standard_deviation, pf.standard_unc_of_mean])
+def test_overflow_is_reported_rather_than_returning_inf(fn):
+    error, message = failing_call(fn, [1e200, -1e200])
+    assert "could not produce a number" in message
+    assert fn.__name__ in str(error)
+
+
+@pytest.mark.parametrize("fn", [pf.standard_deviation, pf.standard_unc_of_mean])
+def test_large_but_workable_values_still_compute(fn):
+    assert fn([1e150, -1e150]) is not None
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize("position", [0, 1, 2, 3])
+def test_t_score_rejects_non_finite_arguments(bad, position):
+    args = [10, 2, 12, 3]
+    args[position] = bad
+    names = ["A", "dA", "B", "dB"]
+    _, message = failing_call(pf.t_score, *args)
+    assert "must be an ordinary number" in message
+    assert names[position] in message
+
+
+@pytest.mark.parametrize("fn, args", [
+    (pf.standard_deviation, ([1e200, -1e200],)),     # overflows while computing
+    (pf.standard_unc_of_mean, ([1e200, -1e200],)),
+    (pf.standard_deviation, ([1.0, float("inf")],)),  # rejected before computing
+    (pf.t_score, (float("inf"), 2, 12, 3)),
+])
+def test_no_numpy_warning_reaches_the_student(fn, args):
+    """numpy's own RuntimeWarning names a file path, which is what this avoids."""
+    with warnings.catch_warnings(record=True) as raised:
+        warnings.simplefilter("always")
+        failing_call(fn, *args)
+    assert [w for w in raised if issubclass(w.category, RuntimeWarning)] == []
+
+
+def test_oversized_integer_in_data_is_reported_not_raised_raw():
+    """np.asarray raises OverflowError, which must not reach the student."""
+    _, message = failing_call(pf.standard_deviation, [10 ** 400, 1])
+    assert "too large to work with" in message
+
+
+def test_oversized_integer_argument_to_t_score():
+    _, message = failing_call(pf.t_score, 10 ** 400, 2, 12, 3)
+    assert "must be an ordinary number" in message
+
+
+@pytest.mark.parametrize("fn, args", [
+    (pf.t_score, ("x" * 500, 2, 12, 3)),
+    (pf.standard_deviation, ([10 ** 400, 1],)),
+    (pf.standard_deviation, ("y" * 500,)),
+])
+def test_messages_stay_short_whatever_was_passed(fn, args):
+    _, message = failing_call(fn, *args)
+    assert max(len(line) for line in message.splitlines()) < 120
 
 
 # Usage help from the decorator

@@ -17,6 +17,28 @@ should be survivable was reversed.
 - `Phys119Error` is exported, so a notebook can catch it deliberately.
 - Outside a notebook both kinds fall back to plain text on stderr.
 
+Also fixed, found while re-checking the whole package:
+
+- `nan` and `inf` arguments were accepted and travelled silently through the
+  arithmetic, so `t_score(nan, 2, 12, 3)` returned `nan`. All four arguments
+  must now be ordinary numbers.
+- `nan` was caught in a dataset but `inf` was not, so
+  `standard_deviation([1.0, inf])` returned `nan` and numpy printed its own
+  `RuntimeWarning` naming a file path, which is the kind of message this
+  package exists to avoid. Infinite values are now reported with their
+  indices.
+- A calculation that overflowed, such as `standard_deviation([1e200,
+  -1e200])`, returned `inf` with another numpy warning. Calculations now run
+  under `np.errstate` and a result that is not finite is reported instead of
+  returned.
+- An integer too large for a float raised a raw `OverflowError` traceback
+  from `np.asarray`. It is now reported as a value too large to work with.
+- Messages put the offending value on its own line, so one long input cannot
+  produce a 123-character line, and the value is truncated at 60 characters.
+- The exception message now carries the offending value alongside the
+  headline, which is what a TA sees when catching the error or running a
+  notebook non-interactively.
+
 ## 1.0.0 (deployed to the course JupyterHub 2026-09-22)
 
 First packaged release, holding the three non-plotting helpers from the
