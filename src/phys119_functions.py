@@ -12,21 +12,120 @@ Students import everything at the top of a lab notebook:
     from phys119_functions import *
 
 and get help on any function with, for example, help(t_score).
+
+How mistakes are reported:
+
+- A warning appears as an amber box. The calculation carries on and the
+  result is still returned, because the values might be right.
+- An error appears as a red box and stops the cell by raising Phys119Error.
+  Nothing further down the notebook then runs on a result that was never
+  produced. In a notebook no traceback is shown, only the box.
+- Outside a notebook, both fall back to plain text on stderr and the
+  exception behaves like any other Python exception.
 """
 
 import functools
+import html
 import sys
 import inspect
 
 import numpy as np
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "t_score",
     "standard_deviation",
     "standard_unc_of_mean",
+    "Phys119Error",
 ]
+
+
+class Phys119Error(Exception):
+    """Raised when a phys119 function is called in a way that cannot work.
+
+    The explanation a student needs is shown as a red box above this. The
+    exception itself is what stops the cell, so that nothing further down the
+    notebook runs on a result that was never produced.
+    """
+
+
+_ERROR_STYLE = {
+    'background': '#FDECEA',
+    'border': '#C62828',
+    'colour': '#611A15',
+}
+
+_WARNING_STYLE = {
+    'background': '#FFF4E5',
+    'border': '#E07000',
+    'colour': '#663C00',
+}
+
+_BOX = (
+    '<div style="background:{background}; border-left: 6px solid {border};'
+    ' color:{colour}; padding: 10px 14px; margin: 2px 0;'
+    ' font-family: var(--jp-code-font-family, monospace); font-size: 13px;'
+    ' line-height: 1.45; white-space: pre-wrap;">'
+    '<b>{title}:</b> {body}</div>'
+)
+
+
+def _notebook_display():
+    """Return (display, HTML) when running in a notebook, else None."""
+    try:
+        from IPython import get_ipython
+        from IPython.display import display, HTML
+    except ImportError:
+        return None
+    shell = get_ipython()
+    if shell is None or not hasattr(shell, 'kernel'):
+        return None
+    return display, HTML
+
+
+def _show(title, message, style):
+    """Show a student-facing message, boxed in a notebook and plain elsewhere."""
+    lines = message.split('\n')
+    pair = _notebook_display()
+    if pair is None:
+        print(f"{title}: {lines[0]}", file=sys.stderr)
+        for line in lines[1:]:
+            print(line, file=sys.stderr)
+        return
+    display, HTML = pair
+    body = '<br>'.join(html.escape(line) if line else '&nbsp;' for line in lines)
+    display(HTML(_BOX.format(title=title, body=body, **style)))
+
+
+def _warn(message):
+    """Show a warning. The calculation carries on and still returns a result."""
+    _show('Warning', message, _WARNING_STYLE)
+
+
+def _fail(message):
+    """Show an error and stop the cell, so nothing downstream uses a bad result."""
+    _show('Error', message, _ERROR_STYLE)
+    raise Phys119Error(message.split('\n')[0]) from None
+
+
+def _install_traceback_suppressor():
+    """Show only the red box for Phys119Error, never a traceback."""
+    try:
+        from IPython import get_ipython
+    except ImportError:
+        return
+    shell = get_ipython()
+    if shell is None or not hasattr(shell, 'set_custom_exc'):
+        return
+
+    def _handler(shell_self, etype, value, tb, tb_offset=None):
+        return []
+
+    shell.set_custom_exc((Phys119Error,), _handler)
+
+
+_install_traceback_suppressor()
 
 
 def _friendly_errors(fn):
@@ -51,12 +150,11 @@ def _friendly_errors(fn):
                     f"Usage (required): {fn.__name__}{required_sig}\n"
                     f"Usage (full):     {fn.__name__}{full_sig}"
                 )
-            print(
-                f"Error: {e}\n"
+            _fail(
+                f"{e}\n"
                 f"\n"
                 f"{usage}\n"
-                f"Run help({fn.__name__}) for details.",
-                file=sys.stderr,
+                f"Run help({fn.__name__}) for details."
             )
     return wrapper
 
@@ -78,26 +176,23 @@ def t_score(A, dA, B, dB):
     """
     for name, val in [('A', A), ('dA', dA), ('B', B), ('dB', dB)]:
         if not isinstance(val, (int, float, np.number)):
-            print(
-                f"Error: {name} must be a number, got {type(val).__name__} {val!r}.\n"
+            _fail(
+                f"{name} must be a number, got {type(val).__name__} {val!r}.\n"
                 "  Argument order: t_score(A, dA, B, dB)\n"
-                "  Example:        t_score(10, 2, 12, 3)  ->  0.5547",
-                file=sys.stderr,
+                "  Example:        t_score(10, 2, 12, 3)  ->  0.5547"
             )
-            return
 
     if dA < 0 or dB < 0:
         _w = max(len(str(v)) for v in [A, dA, B, dB])
         def _row(name, val, highlight=False):
             marker = "   !!! must be >= 0 !!!" if highlight else ""
             return f"  {name:<2} = {str(val):>{_w}}{marker}"
-        print(
-            "Warning: uncertainties must be non-negative.\n"
+        _warn(
+            "uncertainties must be non-negative.\n"
             + _row('A',  A) + "\n"
             + _row('dA', dA, highlight=dA < 0) + "\n"
             + _row('B',  B) + "\n"
-            + _row('dB', dB, highlight=dB < 0),
-            file=sys.stderr,
+            + _row('dB', dB, highlight=dB < 0)
         )
 
     if abs(dA) >= abs(A) or abs(dB) >= abs(B):
@@ -105,26 +200,23 @@ def t_score(A, dA, B, dB):
         def _row(name, val, highlight=False):
             marker = "   !!! unexpectedly large !!!" if highlight else ""
             return f"  {name:<2} = {str(val):>{_w}}{marker}"
-        print(
-            "Warning: one or more uncertainties look large relative to their measurement.\n"
+        _warn(
+            "one or more uncertainties look large relative to their measurement.\n"
             + _row('A',  A) + "\n"
             + _row('dA', dA, highlight=abs(dA) >= abs(A)) + "\n"
             + _row('B',  B) + "\n"
             + _row('dB', dB, highlight=abs(dB) >= abs(B)) + "\n"
             + "\n"
             + "Expected argument order: t_score(A, dA, B, dB)\n"
-            + "If your values are correct, you can ignore this warning.",
-            file=sys.stderr,
+            + "If your values are correct, you can ignore this warning."
         )
 
     if dA == 0 and dB == 0:
-        print(
-            "Error: dA and dB cannot both be zero (division by zero).\n"
+        _fail(
+            "dA and dB cannot both be zero (division by zero).\n"
             "\n"
-            "Check that you have entered your uncertainties correctly.",
-            file=sys.stderr,
+            "Check that you have entered your uncertainties correctly."
         )
-        return
 
     return float(abs(A - B) / np.sqrt(dA**2 + dB**2))
 
@@ -132,8 +224,8 @@ def t_score(A, dA, B, dB):
 def _check_1d_data(data, fn_name):
     """Validate a one-dimensional numeric dataset.
 
-    Returns the data as a float numpy array, or prints a student-facing
-    error message to stderr and returns None.
+    Returns the data as a float numpy array. Anything unusable shows a
+    student-facing error and raises Phys119Error, which stops the cell.
     """
     example = f"  Example: {fn_name}([10.1, 10.3, 9.8])"
 
@@ -142,55 +234,45 @@ def _check_1d_data(data, fn_name):
         return text if len(text) <= 60 else text[:57] + "..."
 
     if isinstance(data, (int, float, np.number)):
-        print(
-            "Error: data must be a list or numpy array of measurements, "
+        _fail(
+            "data must be a list or numpy array of measurements, "
             f"got the single number {_shown(data)}.\n"
-            f"{example}",
-            file=sys.stderr,
+            f"{example}"
         )
-        return None
 
     try:
         arr = np.asarray(data, dtype=float)
     except (TypeError, ValueError):
-        print(
-            "Error: data must be a list or numpy array of numbers, "
+        _fail(
+            "data must be a list or numpy array of numbers, "
             f"got {type(data).__name__} {_shown(data)}.\n"
-            f"{example}",
-            file=sys.stderr,
+            f"{example}"
         )
-        return None
 
     if arr.ndim != 1:
-        print(
-            f"Error: data must be one-dimensional, got an array with shape {arr.shape}.\n"
+        _fail(
+            f"data must be one-dimensional, got an array with shape {arr.shape}.\n"
             "  Pass one set of repeated measurements at a time.\n"
-            f"{example}",
-            file=sys.stderr,
+            f"{example}"
         )
-        return None
 
     if np.any(np.isnan(arr)):
-        print(
-            "Error: data contains missing values (nan).\n"
+        _fail(
+            "data contains missing values (nan).\n"
             f"  nan values at indices: {np.where(np.isnan(arr))[0].tolist()}\n"
             "\n"
             "Blank cells in a spreadsheet are read in as nan. Fill them in or\n"
-            "remove them from the array, then run this cell again.",
-            file=sys.stderr,
+            "remove them from the array, then run this cell again."
         )
-        return None
 
     if arr.size < 2:
-        print(
-            f"Error: {fn_name} needs at least 2 measurements, got {arr.size}.\n"
+        _fail(
+            f"{fn_name} needs at least 2 measurements, got {arr.size}.\n"
             "\n"
             "The spread of a set of measurements cannot be found from fewer\n"
             "than two of them. Check that you passed the full array of\n"
-            "repeated measurements.",
-            file=sys.stderr,
+            "repeated measurements."
         )
-        return None
 
     return arr
 
@@ -220,8 +302,6 @@ def standard_deviation(data):
     Cornell Physics Labs.
     """
     arr = _check_1d_data(data, 'standard_deviation')
-    if arr is None:
-        return
 
     return float(_sample_std(arr))
 
@@ -246,8 +326,6 @@ def standard_unc_of_mean(data):
     Cornell Physics Labs.
     """
     arr = _check_1d_data(data, 'standard_unc_of_mean')
-    if arr is None:
-        return
 
     N = len(arr)
     return float(_sample_std(arr) / np.sqrt(N))

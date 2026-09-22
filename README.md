@@ -27,11 +27,16 @@ help(t_score)                           # call signature and examples
 
 ## Design notes
 
-- Errors and warnings print to `sys.stderr`, which Jupyter shows in red.
-  Errors return `None`; warnings still return the result.
-- Nothing raises an exception at the student, and no traceback is shown.
-- Calling a function with the wrong number of arguments prints the usage
-  line and a pointer to `help()`.
+- A **warning** appears as an amber box. The calculation carries on and the
+  result is still returned, because the values might be right.
+- An **error** appears as a red box and stops the cell, by raising
+  `Phys119Error`. Nothing further down the notebook runs on a result that was
+  never produced. In a notebook the student sees the box and no traceback.
+- Outside a notebook, both fall back to plain text on stderr, and the
+  exception behaves like any other Python exception, which is what makes the
+  test suite straightforward.
+- Calling a function with the wrong number of arguments shows the usage line
+  and a pointer to `help()`.
 - Values come back as plain Python floats, so students see a clean number
   rather than `np.float64(...)`.
 
@@ -40,7 +45,7 @@ help(t_score)                           # call signature and examples
 For the course Jupyter server, as admin, from a built wheel:
 
 ```
-python -m pip install phys119_functions-1.0.0-py3-none-any.whl
+python -m pip install phys119_functions-1.1.0-py3-none-any.whl
 ```
 
 or directly from a checkout:

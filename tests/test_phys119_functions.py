@@ -20,6 +20,15 @@ def call(fn, *args, **kwargs):
     return result, buffer.getvalue()
 
 
+def failing_call(fn, *args, **kwargs):
+    """Call fn expecting it to stop, returning (exception, text on stderr)."""
+    buffer = io.StringIO()
+    with redirect_stderr(buffer):
+        with pytest.raises(pf.Phys119Error) as caught:
+            fn(*args, **kwargs)
+    return caught.value, buffer.getvalue()
+
+
 DATA = [10.1, 10.3, 9.8]
 
 
@@ -60,7 +69,7 @@ def test_accepts_sequence_types(data):
     assert pf.standard_deviation(data) is not None
 
 
-# Errors: message printed in red, None returned, nothing raised
+# Errors: message shown in red, execution stopped
 
 @pytest.mark.parametrize("fn", [pf.standard_deviation, pf.standard_unc_of_mean])
 @pytest.mark.parametrize("bad, expected", [
@@ -73,27 +82,25 @@ def test_accepts_sequence_types(data):
     ([4.2], "at least 2 measurements"),
     ([], "at least 2 measurements"),
 ])
-def test_bad_data_reports_and_returns_none(fn, bad, expected):
-    result, message = call(fn, bad)
-    assert result is None
+def test_bad_data_reports_and_stops(fn, bad, expected):
+    error, message = failing_call(fn, bad)
     assert message.startswith("Error:")
     assert expected in message
+    assert expected in str(error)
 
 
 def test_nan_message_lists_indices():
-    _, message = call(pf.standard_deviation, [1.0, float("nan"), 3.0, float("nan")])
+    _, message = failing_call(pf.standard_deviation, [1.0, float("nan"), 3.0, float("nan")])
     assert "[1, 3]" in message
 
 
 def test_t_score_rejects_non_numbers():
-    result, message = call(pf.t_score, "ten", 2, 12, 3)
-    assert result is None
+    _, message = failing_call(pf.t_score, "ten", 2, 12, 3)
     assert "A must be a number" in message
 
 
 def test_t_score_rejects_two_zero_uncertainties():
-    result, message = call(pf.t_score, 10, 0, 12, 0)
-    assert result is None
+    _, message = failing_call(pf.t_score, 10, 0, 12, 0)
     assert "cannot both be zero" in message
 
 
@@ -119,26 +126,25 @@ def test_t_score_warns_on_large_uncertainty_but_still_returns():
     (pf.standard_unc_of_mean, "standard_unc_of_mean"),
 ])
 def test_missing_arguments_print_usage(fn, name):
-    result, message = call(fn)
-    assert result is None
+    _, message = failing_call(fn)
     assert "Usage:" in message
     assert name in message
     assert "help(" + name + ")" in message
 
 
 def test_too_many_arguments_print_usage():
-    result, message = call(pf.standard_deviation, DATA, DATA)
-    assert result is None
+    _, message = failing_call(pf.standard_deviation, DATA, DATA)
     assert "Usage:" in message
 
 
 # Packaging
 
-def test_star_import_exports_only_public_functions():
+def test_star_import_exports_only_the_public_api():
     namespace = {}
     exec("from phys119_functions import *", namespace)
     exported = {n for n in namespace if not n.startswith("__")}
-    assert exported == {"t_score", "standard_deviation", "standard_unc_of_mean"}
+    assert exported == {"t_score", "standard_deviation", "standard_unc_of_mean",
+                        "Phys119Error"}
 
 
 def test_version_matches_pyproject():
