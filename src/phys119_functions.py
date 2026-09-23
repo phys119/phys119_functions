@@ -1,5 +1,16 @@
 """Helper functions for Phys 119 lab notebooks.
 
+Version 1.2.0. Four functions: t_score, mean, standard_deviation and
+standard_unc_of_mean. This is the code installed on the course JupyterHub as
+the package `phys119-functions`, and the same file can simply sit beside a
+notebook, since Python imports a module from the notebook's own folder before
+any installed one. Nothing needs installing, and numpy is all it needs.
+
+The course folder holds a second copy under the same name which adds the
+plotting functions. To tell them apart:
+`hasattr(phys119_functions, 'plot_linear_model')` is False here and True
+there.
+
 Developed by Joss Ives for UBC Physics Labs, in collaboration with Claude
 (Anthropic), 2026. The student-facing error messages, the input checking and
 the usage help came out of that collaboration.
