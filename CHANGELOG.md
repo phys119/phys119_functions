@@ -2,6 +2,11 @@
 
 ## 1.2.0 (unreleased)
 
+- `t_score` arguments are renamed from `A, dA, B, dB` to `x1, dx1, x2, dx2`,
+  to match the notation the course materials use. A message reading "dx2 must
+  be a number" points at something a student can find on the page in front of
+  them, which "dB must be a number" did not. This changes keyword calls, and
+  nothing in the course notebooks used them.
 - Adds `mean(data)`, so the message a student gets for a mean matches the one
   they get for a standard deviation. It accepts a single measurement, since
   the mean of one number is that number, while the two spread functions still

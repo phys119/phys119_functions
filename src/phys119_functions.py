@@ -208,26 +208,26 @@ def _friendly_errors(fn):
 
 
 @_friendly_errors
-def t_score(A, dA, B, dB):
+def t_score(x1, dx1, x2, dx2):
     """Returns the t'-score comparing two measurements.
 
-    Arguments (positional order: A, dA, B, dB):
-      A  -- measurement A
-      dA -- uncertainty of measurement A
-      B  -- measurement B
-      dB -- uncertainty of measurement B
+    Arguments (positional order: x1, dx1, x2, dx2):
+      x1  -- the first measurement
+      dx1 -- the uncertainty in the first measurement
+      x2  -- the second measurement
+      dx2 -- the uncertainty in the second measurement
 
     Can be called positionally or with named arguments in any order:
-      t_score(10, 2, 12, 3)             ->  0.5547
-      t_score(A=10, dA=2, B=12, dB=3)   ->  0.5547
-      t_score(A=10, B=12, dA=2, dB=3)   ->  0.5547
+      t_score(10, 2, 12, 3)                 ->  0.5547
+      t_score(x1=10, dx1=2, x2=12, dx2=3)   ->  0.5547
+      t_score(x1=10, x2=12, dx1=2, dx2=3)   ->  0.5547
     """
-    for name, val in [('A', A), ('dA', dA), ('B', B), ('dB', dB)]:
+    for name, val in [('x1', x1), ('dx1', dx1), ('x2', x2), ('dx2', dx2)]:
         if not isinstance(val, (int, float, np.number)):
             _fail(
                 f"{name} must be a number.\n"
                 f"  got {type(val).__name__}: {_shown(val)}\n"
-                "  Argument order: t_score(A, dA, B, dB)\n"
+                "  Argument order: t_score(x1, dx1, x2, dx2)\n"
                 "  Example:        t_score(10, 2, 12, 3)  ->  0.5547"
             )
         if _as_finite_number(val) is None:
@@ -241,44 +241,44 @@ def t_score(A, dA, B, dB):
                 "cell again."
             )
 
-    if dA < 0 or dB < 0:
-        _w = max(len(str(v)) for v in [A, dA, B, dB])
+    if dx1 < 0 or dx2 < 0:
+        _w = max(len(str(v)) for v in [x1, dx1, x2, dx2])
         def _row(name, val, highlight=False):
             marker = "   !!! must be >= 0 !!!" if highlight else ""
-            return f"  {name:<2} = {str(val):>{_w}}{marker}"
+            return f"  {name:<3} = {str(val):>{_w}}{marker}"
         _warn(
             "uncertainties must be non-negative.\n"
-            + _row('A',  A) + "\n"
-            + _row('dA', dA, highlight=dA < 0) + "\n"
-            + _row('B',  B) + "\n"
-            + _row('dB', dB, highlight=dB < 0)
+            + _row('x1',  x1) + "\n"
+            + _row('dx1', dx1, highlight=dx1 < 0) + "\n"
+            + _row('x2',  x2) + "\n"
+            + _row('dx2', dx2, highlight=dx2 < 0)
         )
 
-    if abs(dA) >= abs(A) or abs(dB) >= abs(B):
-        _w = max(len(str(v)) for v in [A, dA, B, dB])
+    if abs(dx1) >= abs(x1) or abs(dx2) >= abs(x2):
+        _w = max(len(str(v)) for v in [x1, dx1, x2, dx2])
         def _row(name, val, highlight=False):
             marker = "   !!! unexpectedly large !!!" if highlight else ""
-            return f"  {name:<2} = {str(val):>{_w}}{marker}"
+            return f"  {name:<3} = {str(val):>{_w}}{marker}"
         _warn(
             "one or more uncertainties look large relative to their measurement.\n"
-            + _row('A',  A) + "\n"
-            + _row('dA', dA, highlight=abs(dA) >= abs(A)) + "\n"
-            + _row('B',  B) + "\n"
-            + _row('dB', dB, highlight=abs(dB) >= abs(B)) + "\n"
+            + _row('x1',  x1) + "\n"
+            + _row('dx1', dx1, highlight=abs(dx1) >= abs(x1)) + "\n"
+            + _row('x2',  x2) + "\n"
+            + _row('dx2', dx2, highlight=abs(dx2) >= abs(x2)) + "\n"
             + "\n"
-            + "Expected argument order: t_score(A, dA, B, dB)\n"
+            + "Expected argument order: t_score(x1, dx1, x2, dx2)\n"
             + "If your values are correct, you can ignore this warning."
         )
 
-    if dA == 0 and dB == 0:
+    if dx1 == 0 and dx2 == 0:
         _fail(
-            "dA and dB cannot both be zero (division by zero).\n"
+            "dx1 and dx2 cannot both be zero (division by zero).\n"
             "\n"
             "Check that you have entered your uncertainties correctly."
         )
 
     with np.errstate(all='ignore'):
-        score = abs(A - B) / np.sqrt(dA**2 + dB**2)
+        score = abs(x1 - x2) / np.sqrt(dx1**2 + dx2**2)
     return _finite_result(score, 't_score')
 
 

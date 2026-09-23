@@ -9,7 +9,7 @@ and every function explains itself through `help()`.
 
 | Function | Returns |
 |---|---|
-| `t_score(A, dA, B, dB)` | the t'-score comparing two measurements |
+| `t_score(x1, dx1, x2, dx2)` | the t'-score comparing two measurements |
 | `mean(data)` | the mean of a set of measurements |
 | `standard_deviation(data)` | the standard deviation of a set of repeated measurements |
 | `standard_unc_of_mean(data)` | the standard uncertainty of the mean |

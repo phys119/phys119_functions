@@ -40,7 +40,7 @@ def test_t_score_value():
 
 
 def test_t_score_named_arguments_in_any_order():
-    assert pf.t_score(dB=3, B=12, dA=2, A=10) == pytest.approx(0.5547001962252291)
+    assert pf.t_score(dx2=3, x2=12, dx1=2, x1=10) == pytest.approx(0.5547001962252291)
 
 
 def test_standard_deviation_matches_numpy():
@@ -98,12 +98,18 @@ def test_nan_message_lists_indices():
 
 def test_t_score_rejects_non_numbers():
     _, message = failing_call(pf.t_score, "ten", 2, 12, 3)
-    assert "A must be a number" in message
+    assert "x1 must be a number" in message
 
 
 def test_t_score_rejects_two_zero_uncertainties():
     _, message = failing_call(pf.t_score, 10, 0, 12, 0)
     assert "cannot both be zero" in message
+
+
+def test_t_score_argument_names_are_the_ones_students_see():
+    """The names in the messages match the notation used in the course."""
+    import inspect
+    assert list(inspect.signature(pf.t_score).parameters) == ["x1", "dx1", "x2", "dx2"]
 
 
 # Warnings: message printed, result still returned
@@ -139,7 +145,7 @@ def test_large_but_workable_values_still_compute(fn):
 def test_t_score_rejects_non_finite_arguments(bad, position):
     args = [10, 2, 12, 3]
     args[position] = bad
-    names = ["A", "dA", "B", "dB"]
+    names = ["x1", "dx1", "x2", "dx2"]
     _, message = failing_call(pf.t_score, *args)
     assert "must be an ordinary number" in message
     assert names[position] in message
