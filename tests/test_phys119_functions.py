@@ -79,7 +79,7 @@ def test_accepts_sequence_types(data):
     ("abc", "list or numpy array of numbers"),
     (["a", "b"], "list or numpy array of numbers"),
     ({"a": 1}, "list or numpy array of numbers"),
-    (np.array([[1.0, 2.0], [3.0, 4.0]]), "one-dimensional"),
+    (np.array([[1.0, 2.0], [3.0, 4.0]]), "one set of measurements"),
     ([1.0, float("nan"), 3.0], "missing values"),
     ([1.0, float("inf"), 3.0], "infinite values"),
     ([1.0, float("-inf")], "infinite values"),
@@ -99,12 +99,12 @@ def test_nan_message_lists_indices():
 
 def test_t_score_rejects_non_numbers():
     _, message = failing_call(pf.t_score, "ten", 2, 12, 3)
-    assert "x1 must be a number" in message
+    assert "needs x1 to be a number" in message
 
 
 def test_t_score_rejects_two_zero_uncertainties():
     _, message = failing_call(pf.t_score, 10, 0, 12, 0)
-    assert "cannot both be zero" in message
+    assert "both zero" in message
 
 
 def test_t_score_argument_names_are_the_ones_students_see():
@@ -118,7 +118,7 @@ def test_t_score_argument_names_are_the_ones_students_see():
 def test_t_score_warns_on_negative_uncertainty_but_still_returns():
     result, message = call(pf.t_score, 10, -2, 12, 3)
     assert result == pytest.approx(0.5547001962252291)
-    assert "must be non-negative" in message
+    assert "uncertainties to be non-negative" in message
 
 
 def test_t_score_warns_on_large_uncertainty_but_still_returns():
@@ -161,7 +161,7 @@ def test_t_score_rejects_non_finite_arguments(bad, position):
     args[position] = bad
     names = ["x1", "dx1", "x2", "dx2"]
     _, message = failing_call(pf.t_score, *args)
-    assert "must be an ordinary number" in message
+    assert "to be an ordinary number" in message
     assert names[position] in message
 
 
@@ -187,7 +187,7 @@ def test_oversized_integer_in_data_is_reported_not_raised_raw():
 
 def test_oversized_integer_argument_to_t_score():
     _, message = failing_call(pf.t_score, 10 ** 400, 2, 12, 3)
-    assert "must be an ordinary number" in message
+    assert "to be an ordinary number" in message
 
 
 @pytest.mark.parametrize("fn, args", [
@@ -241,6 +241,42 @@ def test_spread_functions_still_need_two(fn):
 def test_mean_refuses_what_the_others_refuse(bad, expected):
     _, message = failing_call(pf.mean, bad)
     assert expected in message
+
+
+# Every message says which function produced it
+
+@pytest.mark.parametrize("fn, args", [
+    (pf.t_score, ("ten", 2, 12, 3)),
+    (pf.t_score, (float("nan"), 2, 12, 3)),
+    (pf.t_score, (10, 0, 12, 0)),
+    (pf.t_score, (10, 2, 12)),
+    (pf.mean, ([],)),
+    (pf.mean, (4.8,)),
+    (pf.mean, ("abc",)),
+    (pf.mean, ([1.0, float("nan")],)),
+    (pf.mean, ([1.0, float("inf")],)),
+    (pf.mean, ([1e308, 1e308],)),
+    (pf.mean, ([10 ** 400],)),
+    (pf.standard_deviation, ([4.8],)),
+    (pf.standard_deviation, (np.array([[1.0, 2.0], [3.0, 4.0]]),)),
+    (pf.standard_unc_of_mean, ([4.8],)),
+    (pf.standard_unc_of_mean, ([],)),
+])
+def test_every_error_names_the_function_that_produced_it(fn, args):
+    """A cell may call several of these, so a message must identify itself."""
+    error, message = failing_call(fn, *args)
+    assert f"{fn.__name__}()" in message.splitlines()[0]
+    assert f"{fn.__name__}()" in str(error)
+
+
+@pytest.mark.parametrize("args", [
+    (9.81, 0.05, 9.79, -0.04),     # negative uncertainty
+    (9.81, 12.0, 9.79, 0.05),      # uncertainty larger than the measurement
+])
+def test_every_warning_names_the_function_that_produced_it(args):
+    result, message = call(pf.t_score, *args)
+    assert result is not None
+    assert "t_score()" in message.splitlines()[0]
 
 
 # Usage help from the decorator

@@ -25,6 +25,14 @@
   for a name students did not know the package needed.
 - Docstring examples use plain lists rather than `np.array(...)`, so `help()`
   is copyable by a student who imported nothing else.
+- Every message now names the function that produced it, written as `mean()`,
+  and reads with that function as the subject: "mean() needs at least 1
+  measurement, got 0", "t_score() needs x1 to be a number". Previously some
+  messages named no function at all, which is ambiguous as soon as one cell
+  calls more than one of them, and a demo cell that called two functions was
+  read as attributing one function's message to another. A helper puts the
+  name in front of anything that does not already start with it, so no message
+  can reach a student unattributed.
 
 ## 1.1.0 (deployed to the course JupyterHub 2026-09-22)
 

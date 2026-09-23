@@ -123,13 +123,25 @@ def _show(title, message, style):
     display(HTML(_BOX.format(title=title, body=body, **style)))
 
 
-def _warn(message):
+def _named(fn_name, message):
+    """Make sure a message says which function produced it.
+
+    Messages are written with the function as the subject, as in "mean() needs
+    at least 1 measurement". Anything that does not already start that way gets
+    the name put in front, so no message can reach a student unattributed. It
+    matters because a single cell may call several of these functions.
+    """
+    return message if message.startswith(f"{fn_name}(") else f"{fn_name}(): {message}"
+
+
+def _warn(fn_name, message):
     """Show a warning. The calculation carries on and still returns a result."""
-    _show('Warning', message, _WARNING_STYLE)
+    _show('Warning', _named(fn_name, message), _WARNING_STYLE)
 
 
-def _fail(message):
+def _fail(fn_name, message):
     """Show an error and stop the cell, so nothing downstream uses a bad result."""
+    message = _named(fn_name, message)
     _show('ERROR', message, _ERROR_STYLE)
     lines = message.split('\n')
     summary = lines[0]
@@ -158,8 +170,8 @@ def _as_finite_number(value):
 def _finite_result(value, fn_name):
     """Return value as a plain float, or stop if the calculation broke down."""
     if not np.isfinite(value):
-        _fail(
-            f"{fn_name} could not produce a number from these measurements.\n"
+        _fail(fn_name,
+            f"{fn_name}() could not produce a number from these measurements.\n"
             "\n"
             "The calculation overflowed, which usually means one or more values\n"
             "are far larger than they should be. Check the measurements you\n"
@@ -209,7 +221,9 @@ def _friendly_errors(fn):
                     f"Usage (required): {fn.__name__}{required_sig}\n"
                     f"Usage (full):     {fn.__name__}{full_sig}"
                 )
-            _fail(
+            # Python's own wording already opens with the function name, in
+            # the same form these messages use, so it is left as it is.
+            _fail(fn.__name__,
                 f"{e}\n"
                 f"\n"
                 f"{usage}\n"
@@ -235,15 +249,15 @@ def t_score(x1, dx1, x2, dx2):
     """
     for name, val in [('x1', x1), ('dx1', dx1), ('x2', x2), ('dx2', dx2)]:
         if not isinstance(val, (int, float, np.number)):
-            _fail(
-                f"{name} must be a number.\n"
+            _fail('t_score',
+                f"t_score() needs {name} to be a number.\n"
                 f"  got {type(val).__name__}: {_shown(val)}\n"
                 "  Argument order: t_score(x1, dx1, x2, dx2)\n"
                 "  Example:        t_score(10, 2, 12, 3)  ->  0.5547"
             )
         if _as_finite_number(val) is None:
-            _fail(
-                f"{name} must be an ordinary number.\n"
+            _fail('t_score',
+                f"t_score() needs {name} to be an ordinary number.\n"
                 f"  got {_shown(val)}\n"
                 "\n"
                 "A nan usually comes from a blank spreadsheet cell, an inf from\n"
@@ -257,8 +271,8 @@ def t_score(x1, dx1, x2, dx2):
         def _row(name, val, highlight=False):
             marker = "   !!! must be >= 0 !!!" if highlight else ""
             return f"  {name:<3} = {str(val):>{_w}}{marker}"
-        _warn(
-            "uncertainties must be non-negative.\n"
+        _warn('t_score',
+            "t_score() expects uncertainties to be non-negative.\n"
             + _row('x1',  x1) + "\n"
             + _row('dx1', dx1, highlight=dx1 < 0) + "\n"
             + _row('x2',  x2) + "\n"
@@ -270,8 +284,9 @@ def t_score(x1, dx1, x2, dx2):
         def _row(name, val, highlight=False):
             marker = "   !!! unexpectedly large !!!" if highlight else ""
             return f"  {name:<3} = {str(val):>{_w}}{marker}"
-        _warn(
-            "one or more uncertainties look large relative to their measurement.\n"
+        _warn('t_score',
+            "t_score() was given uncertainties that look large relative to their\n"
+            + "measurements.\n"
             + _row('x1',  x1) + "\n"
             + _row('dx1', dx1, highlight=abs(dx1) >= abs(x1)) + "\n"
             + _row('x2',  x2) + "\n"
@@ -282,8 +297,8 @@ def t_score(x1, dx1, x2, dx2):
         )
 
     if dx1 == 0 and dx2 == 0:
-        _fail(
-            "dx1 and dx2 cannot both be zero (division by zero).\n"
+        _fail('t_score',
+            "t_score() cannot divide by zero, and dx1 and dx2 are both zero.\n"
             "\n"
             "Check that you have entered your uncertainties correctly."
         )
@@ -305,8 +320,8 @@ def _check_1d_data(data, fn_name, minimum=2):
     example = f"  Example: {fn_name}([10.1, 10.3, 9.8])"
 
     if isinstance(data, (int, float, np.number)):
-        _fail(
-            "data must be a list or numpy array of measurements.\n"
+        _fail(fn_name,
+            f"{fn_name}() needs a list or numpy array of measurements.\n"
             f"  got the single number {_shown(data)}\n"
             f"{example}"
         )
@@ -314,30 +329,31 @@ def _check_1d_data(data, fn_name, minimum=2):
     try:
         arr = np.asarray(data, dtype=float)
     except OverflowError:
-        _fail(
-            "data contains a value too large to work with.\n"
+        _fail(fn_name,
+            f"{fn_name}() was given a value too large to work with.\n"
             f"  {_shown(data)}\n"
             "\n"
             "Check for a typing slip such as an extra digit or a missing\n"
             "decimal point, then run this cell again."
         )
     except (TypeError, ValueError):
-        _fail(
-            "data must be a list or numpy array of numbers.\n"
+        _fail(fn_name,
+            f"{fn_name}() needs a list or numpy array of numbers.\n"
             f"  got {type(data).__name__}: {_shown(data)}\n"
             f"{example}"
         )
 
     if arr.ndim != 1:
-        _fail(
-            f"data must be one-dimensional, got an array with shape {arr.shape}.\n"
+        _fail(fn_name,
+            f"{fn_name}() needs one set of measurements, but was given an array\n"
+            f"  with shape {arr.shape}.\n"
             "  Pass one set of repeated measurements at a time.\n"
             f"{example}"
         )
 
     if np.any(np.isnan(arr)):
-        _fail(
-            "data contains missing values (nan).\n"
+        _fail(fn_name,
+            f"{fn_name}() was given data containing missing values (nan).\n"
             f"  nan values at indices: {np.where(np.isnan(arr))[0].tolist()}\n"
             "\n"
             "Blank cells in a spreadsheet are read in as nan. Fill them in or\n"
@@ -345,8 +361,8 @@ def _check_1d_data(data, fn_name, minimum=2):
         )
 
     if not np.all(np.isfinite(arr)):
-        _fail(
-            "data contains infinite values.\n"
+        _fail(fn_name,
+            f"{fn_name}() was given data containing infinite values.\n"
             f"  infinite values at indices: {np.where(~np.isfinite(arr))[0].tolist()}\n"
             "\n"
             "An inf usually comes from dividing by zero somewhere earlier, or\n"
@@ -367,8 +383,8 @@ def _check_1d_data(data, fn_name, minimum=2):
                 "read in, then run this cell again."
             )
         measurements = "measurement" if minimum == 1 else "measurements"
-        _fail(
-            f"{fn_name} needs at least {minimum} {measurements}, got {arr.size}.\n"
+        _fail(fn_name,
+            f"{fn_name}() needs at least {minimum} {measurements}, got {arr.size}.\n"
             "\n"
             + why
         )
