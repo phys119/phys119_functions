@@ -389,7 +389,54 @@ def _check_1d_data(data, fn_name, minimum=2):
             + why
         )
 
+    _warn_if_one_value_stands_out(arr, fn_name)
+
     return arr
+
+
+def _warn_if_one_value_stands_out(arr, fn_name):
+    """Catch a transcription slip, such as 4336 typed for 433.6.
+
+    Distance is measured from the median, in units of the median absolute
+    deviation, so one bad value cannot inflate the scale and hide itself. The
+    threshold is deliberately loose: this is a prompt to check a typed number,
+    not a suggestion to discard data.
+    """
+    if arr.size < 4:
+        return
+    deviations = np.abs(arr - np.median(arr))
+    scale = np.median(deviations)
+    if scale == 0:
+        scale = np.mean(deviations)
+    if scale == 0:
+        return                       # every value identical, a different warning
+    with np.errstate(all='ignore'):
+        scores = 0.6745 * deviations / scale
+    worst = int(np.argmax(scores))
+    if not scores[worst] > 5:
+        return
+    others = np.delete(arr, worst)
+    _warn(fn_name,
+        f"{fn_name}() has one measurement far from the others.\n"
+        f"  {float(arr[worst]):g} at position {worst}\n"
+        f"  the others lie between {float(others.min()):g} and {float(others.max()):g}\n"
+        "\n"
+        "Check that it was typed correctly. The result below still includes it."
+    )
+
+
+def _warn_if_no_spread(arr, fn_name):
+    """Zero spread usually means the instrument cannot resolve the repeats."""
+    if arr.size >= 2 and np.all(arr == arr[0]):
+        _warn(fn_name,
+            f"{fn_name}() got the same value for every measurement, so the\n"
+            "spread is exactly zero.\n"
+            f"  all {arr.size} measurements = {float(arr[0]):g}\n"
+            "\n"
+            "That usually means your instrument cannot resolve the difference\n"
+            "between repeats, rather than that there is no variation. The\n"
+            "result below is still returned."
+        )
 
 
 def _sample_std(arr):
@@ -444,6 +491,7 @@ def standard_deviation(data):
     Cornell Physics Labs.
     """
     arr = _check_1d_data(data, 'standard_deviation')
+    _warn_if_no_spread(arr, 'standard_deviation')
 
     with np.errstate(all='ignore'):
         spread = _sample_std(arr)
@@ -472,6 +520,7 @@ def standard_unc_of_mean(data):
     Cornell Physics Labs.
     """
     arr = _check_1d_data(data, 'standard_unc_of_mean')
+    _warn_if_no_spread(arr, 'standard_unc_of_mean')
 
     N = len(arr)
     with np.errstate(all='ignore'):

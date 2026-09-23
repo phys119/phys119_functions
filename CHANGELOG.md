@@ -7,6 +7,18 @@
   be a number" points at something a student can find on the page in front of
   them, which "dB must be a number" did not. This changes keyword calls, and
   nothing in the course notebooks used them.
+- The data functions gain their first two warnings, so a student meets the
+  amber box on work of their own rather than only in a demonstration:
+  - One measurement far from the others, which is usually a typing slip such
+    as `4336` for `433.6`. Distance is measured from the median in units of
+    the median absolute deviation, so one bad value cannot stretch the scale
+    and hide itself, and the threshold is loose enough that ordinary lab data
+    stays quiet. Worded as a prompt to check what was typed, never as a
+    suggestion to discard a measurement. Applies to all three data functions.
+  - Every measurement identical, so the spread is exactly zero. That usually
+    means the instrument cannot resolve the repeats, which is a measurement
+    problem rather than a Python one. Applies to the two spread functions; a
+    mean of identical values is unremarkable and says nothing.
 - Adds `mean(data)`, so the message a student gets for a mean matches the one
   they get for a standard deviation. It accepts a single measurement, since
   the mean of one number is that number, while the two spread functions still

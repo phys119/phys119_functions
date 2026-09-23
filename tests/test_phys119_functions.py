@@ -127,6 +127,67 @@ def test_t_score_warns_on_large_uncertainty_but_still_returns():
     assert "look large relative" in message
 
 
+# Warnings from the data functions
+
+TYPO = [439.3, 431.6, 434.6, 4336.0, 439.3, 442.6, 428.6]   # 4336 for 433.6
+FLAT = [2.31, 2.31, 2.31, 2.31, 2.31, 2.31]                 # instrument too coarse
+
+
+@pytest.mark.parametrize("fn", [pf.mean, pf.standard_deviation, pf.standard_unc_of_mean])
+def test_one_value_far_from_the_rest_warns_but_still_returns(fn):
+    result, message = call(fn, TYPO)
+    assert result is not None
+    assert "far from the others" in message
+    assert "4336 at position 3" in message
+    assert "428.6 and 442.6" in message
+    assert f"{fn.__name__}()" in message
+
+
+@pytest.mark.parametrize("fn", [pf.standard_deviation, pf.standard_unc_of_mean])
+def test_identical_measurements_warn_but_still_return_zero(fn):
+    result, message = call(fn, FLAT)
+    assert result == pytest.approx(0.0)
+    assert "spread is exactly zero" in message
+    assert "all 6 measurements = 2.31" in message
+
+
+def test_mean_says_nothing_about_spread():
+    """A mean of identical values is unremarkable; only the spread functions warn."""
+    result, message = call(pf.mean, FLAT)
+    assert result == pytest.approx(2.31)
+    assert message == ""
+
+
+# The false positives that would matter most
+
+@pytest.mark.parametrize("fn", [pf.mean, pf.standard_deviation, pf.standard_unc_of_mean])
+@pytest.mark.parametrize("data", [
+    [439.3, 431.6, 434.6, 433.3, 439.3, 442.6, 428.6, 441.6],  # a real lab set
+    [2.31, 2.34, 2.29, 2.33, 2.30],                            # tight repeats
+    [1.0, 2.0, 3.0, 4.0, 5.0],                                 # evenly spread
+    [10.0, 10.1],                                              # too few to judge
+    [5.0, 5.1, 5.2],                                           # still too few
+])
+def test_ordinary_data_produces_no_warning(fn, data):
+    result, message = call(fn, data)
+    assert result is not None
+    assert message == ""
+
+
+def test_the_outlier_check_needs_four_values():
+    """With three points there is no 'the others' to compare against."""
+    result, message = call(pf.mean, [1.0, 1.1, 99.0])
+    assert result is not None
+    assert message == ""
+
+
+def test_an_outlier_cannot_hide_behind_its_own_size():
+    """A mean-and-standard-deviation test would miss this; the median does not."""
+    result, message = call(pf.standard_deviation, [5.0, 5.1, 5.2, 5.05, 5000.0])
+    assert "far from the others" in message
+    assert "5000 at position 4" in message
+
+
 # Non-finite values and calculations that break down
 
 @pytest.mark.parametrize("fn", [pf.mean, pf.standard_deviation, pf.standard_unc_of_mean])
