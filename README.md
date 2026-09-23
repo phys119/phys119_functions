@@ -10,6 +10,7 @@ and every function explains itself through `help()`.
 | Function | Returns |
 |---|---|
 | `t_score(A, dA, B, dB)` | the t'-score comparing two measurements |
+| `mean(data)` | the mean of a set of measurements |
 | `standard_deviation(data)` | the standard deviation of a set of repeated measurements |
 | `standard_unc_of_mean(data)` | the standard uncertainty of the mean |
 
@@ -19,6 +20,7 @@ and every function explains itself through `help()`.
 from phys119_functions import *
 
 t_score(10, 2, 12, 3)                   # 0.5547
+mean([10.1, 10.3, 9.8])                 # 10.07
 standard_deviation([10.1, 10.3, 9.8])   # 0.2517
 standard_unc_of_mean([10.1, 10.3, 9.8]) # 0.1453
 
@@ -27,10 +29,16 @@ help(t_score)                           # call signature and examples
 
 ## Design notes
 
-- A **warning** appears as an amber box. The calculation carries on and the
-  result is still returned, because the values might be right.
-- An **error** appears as a red box and stops the cell, by raising
-  `Phys119Error`. Nothing further down the notebook runs on a result that was
+- A **warning** appears as an amber block labelled `Warning:`. The
+  calculation carries on and the result is still returned, because the values
+  might be right.
+- An **error** appears as a red block labelled `ERROR:` and stops the cell, by
+  raising `Phys119Error`.
+- Both blocks borrow Jupyter's own colour variables, so they sit in the
+  colours the notebook already uses for machine output, and they are flat and
+  square cornered rather than rounded with a left bar. Course notebooks use
+  the rounded left-bar style for authored callouts, and the two should not
+  look alike. Nothing further down the notebook runs on a result that was
   never produced. In a notebook the student sees the box and no traceback.
 - Outside a notebook, both fall back to plain text on stderr, and the
   exception behaves like any other Python exception, which is what makes the

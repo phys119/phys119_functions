@@ -72,7 +72,7 @@ def test_accepts_sequence_types(data):
 
 # Errors: message shown in red, execution stopped
 
-@pytest.mark.parametrize("fn", [pf.standard_deviation, pf.standard_unc_of_mean])
+@pytest.mark.parametrize("fn", [pf.mean, pf.standard_deviation, pf.standard_unc_of_mean])
 @pytest.mark.parametrize("bad, expected", [
     (5, "single number"),
     ("abc", "list or numpy array of numbers"),
@@ -82,12 +82,11 @@ def test_accepts_sequence_types(data):
     ([1.0, float("nan"), 3.0], "missing values"),
     ([1.0, float("inf"), 3.0], "infinite values"),
     ([1.0, float("-inf")], "infinite values"),
-    ([4.2], "at least 2 measurements"),
-    ([], "at least 2 measurements"),
+    ([], "at least"),
 ])
 def test_bad_data_reports_and_stops(fn, bad, expected):
     error, message = failing_call(fn, bad)
-    assert message.startswith("Error:")
+    assert message.startswith("ERROR:")
     assert expected in message
     assert expected in str(error)
 
@@ -181,10 +180,54 @@ def test_messages_stay_short_whatever_was_passed(fn, args):
     assert max(len(line) for line in message.splitlines()) < 120
 
 
+# mean
+
+def test_mean_matches_numpy():
+    assert pf.mean(DATA) == pytest.approx(float(np.mean(DATA)))
+
+
+def test_mean_docstring_examples():
+    assert pf.mean(DATA) == pytest.approx(10.07, abs=5e-3)
+    assert pf.mean(np.array([1, 2, 3, 4])) == pytest.approx(2.5)
+
+
+def test_mean_returns_a_plain_float():
+    assert type(pf.mean(DATA)) is float
+
+
+def test_mean_accepts_a_single_measurement():
+    """A mean of one number is that number, unlike a spread."""
+    assert pf.mean([4.8]) == pytest.approx(4.8)
+
+
+def test_mean_rejects_an_empty_dataset():
+    _, message = failing_call(pf.mean, [])
+    assert "at least 1 measurement" in message
+    assert "empty list has no mean" in message
+
+
+@pytest.mark.parametrize("fn", [pf.standard_deviation, pf.standard_unc_of_mean])
+def test_spread_functions_still_need_two(fn):
+    _, message = failing_call(fn, [4.8])
+    assert "at least 2 measurements" in message
+
+
+@pytest.mark.parametrize("bad, expected", [
+    ([1.0, float("nan")], "missing values"),
+    ([1.0, float("inf")], "infinite values"),
+    (5, "single number"),
+    ("abc", "list or numpy array of numbers"),
+])
+def test_mean_refuses_what_the_others_refuse(bad, expected):
+    _, message = failing_call(pf.mean, bad)
+    assert expected in message
+
+
 # Usage help from the decorator
 
 @pytest.mark.parametrize("fn, name", [
     (pf.t_score, "t_score"),
+    (pf.mean, "mean"),
     (pf.standard_deviation, "standard_deviation"),
     (pf.standard_unc_of_mean, "standard_unc_of_mean"),
 ])
@@ -206,8 +249,8 @@ def test_star_import_exports_only_the_public_api():
     namespace = {}
     exec("from phys119_functions import *", namespace)
     exported = {n for n in namespace if not n.startswith("__")}
-    assert exported == {"t_score", "standard_deviation", "standard_unc_of_mean",
-                        "Phys119Error"}
+    assert exported == {"t_score", "mean", "standard_deviation",
+                        "standard_unc_of_mean", "Phys119Error"}
 
 
 def test_version_matches_pyproject():

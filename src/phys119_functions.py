@@ -31,10 +31,11 @@ import inspect
 
 import numpy as np
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 __all__ = [
     "t_score",
+    "mean",
     "standard_deviation",
     "standard_unc_of_mean",
     "Phys119Error",
@@ -50,21 +51,26 @@ class Phys119Error(Exception):
     """
 
 
+# Both boxes borrow Jupyter's own variables, so a message sits in the same
+# colours the notebook already uses for machine output, in any theme. The
+# fallbacks are the light-theme values, for anywhere those variables are
+# undefined.
 _ERROR_STYLE = {
-    'background': '#FDECEA',
-    'border': '#C62828',
-    'colour': '#611A15',
+    'background': 'var(--jp-rendermime-error-background, #FDD)',
+    'colour': 'var(--jp-content-font-color1, #1A1A1A)',
 }
 
 _WARNING_STYLE = {
-    'background': '#FFF4E5',
-    'border': '#E07000',
-    'colour': '#663C00',
+    'background': 'var(--jp-warn-color3, #FFE0B2)',
+    'colour': 'var(--jp-content-font-color1, #1A1A1A)',
 }
 
+# Flat, square cornered and unbordered, which is how Jupyter draws a
+# traceback. Authored callout boxes in the course notebooks use a pale fill
+# with a rounded left bar, so the two no longer read as the same thing.
 _BOX = (
-    '<div style="background:{background}; border-left: 6px solid {border};'
-    ' color:{colour}; padding: 10px 14px; margin: 2px 0;'
+    '<div style="background:{background}; color:{colour};'
+    ' padding: 8px 12px; margin: 2px 0;'
     ' font-family: var(--jp-code-font-family, monospace); font-size: 13px;'
     ' line-height: 1.45; white-space: pre-wrap;">'
     '<b>{title}:</b> {body}</div>'
@@ -105,7 +111,7 @@ def _warn(message):
 
 def _fail(message):
     """Show an error and stop the cell, so nothing downstream uses a bad result."""
-    _show('Error', message, _ERROR_STYLE)
+    _show('ERROR', message, _ERROR_STYLE)
     lines = message.split('\n')
     summary = lines[0]
     for line in lines[1:]:
@@ -268,11 +274,14 @@ def t_score(A, dA, B, dB):
     return _finite_result(score, 't_score')
 
 
-def _check_1d_data(data, fn_name):
+def _check_1d_data(data, fn_name, minimum=2):
     """Validate a one-dimensional numeric dataset.
 
     Returns the data as a float numpy array. Anything unusable shows a
     student-facing error and raises Phys119Error, which stops the cell.
+
+    `minimum` is how many measurements the calling function needs. Anything
+    using N-1 needs two; a mean needs one.
     """
     example = f"  Example: {fn_name}([10.1, 10.3, 9.8])"
 
@@ -326,13 +335,23 @@ def _check_1d_data(data, fn_name):
             "values, then run this cell again."
         )
 
-    if arr.size < 2:
+    if arr.size < minimum:
+        if minimum > 1:
+            why = (
+                "The spread of a set of measurements cannot be found from fewer\n"
+                "than two of them. Check that you passed the full array of\n"
+                "repeated measurements."
+            )
+        else:
+            why = (
+                "An empty list has no mean. Check that your measurements were\n"
+                "read in, then run this cell again."
+            )
+        measurements = "measurement" if minimum == 1 else "measurements"
         _fail(
-            f"{fn_name} needs at least 2 measurements, got {arr.size}.\n"
+            f"{fn_name} needs at least {minimum} {measurements}, got {arr.size}.\n"
             "\n"
-            "The spread of a set of measurements cannot be found from fewer\n"
-            "than two of them. Check that you passed the full array of\n"
-            "repeated measurements."
+            + why
         )
 
     return arr
@@ -342,6 +361,29 @@ def _sample_std(arr):
     """Sample standard deviation (N-1 in the denominator) of a 1-D array."""
     N = len(arr)
     return np.sqrt(np.sum((arr - np.mean(arr))**2) / (N - 1))
+
+
+@_friendly_errors
+def mean(data):
+    """Returns the mean of a set of measurements.
+
+    Arguments:
+      data -- a list or numpy array of measurements (at least 1 value)
+
+    Unlike standard_deviation and standard_unc_of_mean, this one is happy
+    with a single measurement, because the mean of one number is that number.
+    Everything it refuses, it refuses for the same reasons they do, with the
+    same messages.
+
+    Examples:
+      mean([10.1, 10.3, 9.8])        ->  10.07
+      mean(np.array([1, 2, 3, 4]))   ->  2.5
+    """
+    arr = _check_1d_data(data, 'mean', minimum=1)
+
+    with np.errstate(all='ignore'):
+        average = np.mean(arr)
+    return _finite_result(average, 'mean')
 
 
 @_friendly_errors

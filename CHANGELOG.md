@@ -1,6 +1,21 @@
 # Changelog
 
-## 1.1.0 (unreleased)
+## 1.2.0 (unreleased)
+
+- Adds `mean(data)`, so the message a student gets for a mean matches the one
+  they get for a standard deviation. It accepts a single measurement, since
+  the mean of one number is that number, while the two spread functions still
+  need two. Everything else it refuses, it refuses identically.
+- Messages are restyled to look like machine output rather than like the
+  course notebooks' authored callout boxes, which had come to share a visual
+  language: pale fill, rounded corners, coloured left bar. A message is now
+  flat, square cornered and unbordered, in Jupyter's own error and warning
+  colours through `--jp-rendermime-error-background` and `--jp-warn-color3`,
+  so it follows the theme.
+- The error label is uppercase, `ERROR:` against `Warning:`, so the two differ
+  by more than hue.
+
+## 1.1.0 (deployed to the course JupyterHub 2026-09-22)
 
 Changes how mistakes are reported. Warnings and errors were previously
 distinguishable only by their first word, and an early decision that errors
