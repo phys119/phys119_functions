@@ -14,6 +14,12 @@
   so it follows the theme.
 - The error label is uppercase, `ERROR:` against `Warning:`, so the two differ
   by more than hue.
+- `from phys119_functions import *` now also provides `np`, as a backup for a
+  notebook missing its own `import numpy as np`. Notebooks should keep that
+  import; this only stops a missing header cell from producing a `NameError`
+  for a name students did not know the package needed.
+- Docstring examples use plain lists rather than `np.array(...)`, so `help()`
+  is copyable by a student who imported nothing else.
 
 ## 1.1.0 (deployed to the course JupyterHub 2026-09-22)
 

@@ -250,7 +250,28 @@ def test_star_import_exports_only_the_public_api():
     exec("from phys119_functions import *", namespace)
     exported = {n for n in namespace if not n.startswith("__")}
     assert exported == {"t_score", "mean", "standard_deviation",
-                        "standard_unc_of_mean", "Phys119Error"}
+                        "standard_unc_of_mean", "Phys119Error", "np"}
+
+
+def test_star_import_provides_numpy_as_a_backup():
+    """A notebook missing its own import numpy as np still gets one."""
+    namespace = {}
+    exec("from phys119_functions import *", namespace)
+    assert namespace["np"] is np
+
+
+def test_a_student_rebinding_np_cannot_break_the_functions():
+    namespace = {}
+    exec("from phys119_functions import *", namespace)
+    namespace["np"] = 5
+    exec("result = mean([1.0, 2.0, 3.0])", namespace)
+    assert namespace["result"] == pytest.approx(2.0)
+
+
+def test_docstrings_do_not_assume_numpy_is_imported():
+    """help() must be copyable by a student who imported nothing else."""
+    for fn in (pf.t_score, pf.mean, pf.standard_deviation, pf.standard_unc_of_mean):
+        assert "np." not in fn.__doc__
 
 
 def test_version_matches_pyproject():

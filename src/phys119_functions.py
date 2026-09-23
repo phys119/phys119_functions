@@ -13,6 +13,13 @@ Students import everything at the top of a lab notebook:
 
 and get help on any function with, for example, help(t_score).
 
+`from phys119_functions import *` also brings in `np`, as a backup for a
+notebook whose own `import numpy as np` is missing. Lab notebooks should
+still carry that import: it is what students are taught, and it is what makes
+their code work anywhere else. The two names refer to the same module, so
+importing numpy as well costs nothing, and a student who rebinds `np` in
+their own notebook cannot affect the functions here.
+
 How mistakes are reported:
 
 - A warning appears as an amber box. The calculation carries on and the
@@ -39,6 +46,7 @@ __all__ = [
     "standard_deviation",
     "standard_unc_of_mean",
     "Phys119Error",
+    "np",
 ]
 
 
@@ -376,8 +384,10 @@ def mean(data):
     same messages.
 
     Examples:
-      mean([10.1, 10.3, 9.8])        ->  10.07
-      mean(np.array([1, 2, 3, 4]))   ->  2.5
+      mean([10.1, 10.3, 9.8])   ->  10.07
+      mean([1, 2, 3, 4])        ->  2.5
+
+    A list, a tuple or a numpy array all work.
     """
     arr = _check_1d_data(data, 'mean', minimum=1)
 
@@ -398,8 +408,10 @@ def standard_deviation(data):
     It describes the spread of the individual measurements.
 
     Examples:
-      standard_deviation([10.1, 10.3, 9.8])        ->  0.2517
-      standard_deviation(np.array([1, 2, 3, 4]))   ->  1.291
+      standard_deviation([10.1, 10.3, 9.8])   ->  0.2517
+      standard_deviation([1, 2, 3, 4])        ->  1.291
+
+    A list, a tuple or a numpy array all work.
 
     Credit: adapted from a function developed by Rebeckah Fussell for
     Cornell Physics Labs.
@@ -424,8 +436,10 @@ def standard_unc_of_mean(data):
     added.
 
     Examples:
-      standard_unc_of_mean([10.1, 10.3, 9.8])      ->  0.1453
-      standard_unc_of_mean(np.array([1, 2, 3, 4])) ->  0.6455
+      standard_unc_of_mean([10.1, 10.3, 9.8])   ->  0.1453
+      standard_unc_of_mean([1, 2, 3, 4])        ->  0.6455
+
+    A list, a tuple or a numpy array all work.
 
     Credit: adapted from a function developed by Rebeckah Fussell for
     Cornell Physics Labs.

@@ -27,6 +27,13 @@ standard_unc_of_mean([10.1, 10.3, 9.8]) # 0.1453
 help(t_score)                           # call signature and examples
 ```
 
+That import also brings in `np`, as a backup for a notebook whose own
+`import numpy as np` is missing. Lab notebooks should still carry that
+import: it is what students are taught, and it is what makes their code work
+outside the course. Both names refer to the same module, so having both costs
+nothing, and a student who rebinds `np` in their notebook cannot affect these
+functions.
+
 ## Design notes
 
 - A **warning** appears as an amber block labelled `Warning:`. The
