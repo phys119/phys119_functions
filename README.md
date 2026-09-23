@@ -60,7 +60,7 @@ functions.
 For the course Jupyter server, as admin, from a built wheel:
 
 ```
-python -m pip install phys119_functions-1.1.0-py3-none-any.whl
+python -m pip install phys119_functions-1.2.0-py3-none-any.whl
 ```
 
 or directly from a checkout:

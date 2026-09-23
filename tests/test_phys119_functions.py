@@ -53,10 +53,11 @@ def test_standard_unc_of_mean_matches_numpy():
 
 
 def test_docstring_examples():
+    """Exactly the calls the docstrings show, so help() cannot go stale."""
     assert pf.standard_deviation(DATA) == pytest.approx(0.2517, abs=5e-5)
     assert pf.standard_unc_of_mean(DATA) == pytest.approx(0.1453, abs=5e-5)
-    assert pf.standard_deviation(np.array([1, 2, 3, 4])) == pytest.approx(1.291, abs=5e-4)
-    assert pf.standard_unc_of_mean(np.array([1, 2, 3, 4])) == pytest.approx(0.6455, abs=5e-5)
+    assert pf.standard_deviation([1, 2, 3, 4]) == pytest.approx(1.291, abs=5e-4)
+    assert pf.standard_unc_of_mean([1, 2, 3, 4]) == pytest.approx(0.6455, abs=5e-5)
 
 
 def test_results_are_plain_floats():
@@ -128,14 +129,27 @@ def test_t_score_warns_on_large_uncertainty_but_still_returns():
 
 # Non-finite values and calculations that break down
 
-@pytest.mark.parametrize("fn", [pf.standard_deviation, pf.standard_unc_of_mean])
+@pytest.mark.parametrize("fn", [pf.mean, pf.standard_deviation, pf.standard_unc_of_mean])
 def test_overflow_is_reported_rather_than_returning_inf(fn):
-    error, message = failing_call(fn, [1e200, -1e200])
+    """Summing these overflows a float, whichever of the three is asked."""
+    error, message = failing_call(fn, [1e308, 1e308])
     assert "could not produce a number" in message
     assert fn.__name__ in str(error)
 
 
 @pytest.mark.parametrize("fn", [pf.standard_deviation, pf.standard_unc_of_mean])
+def test_overflow_in_the_squared_deviations_is_also_reported(fn):
+    """These two square the deviations, so they overflow where a mean does not."""
+    _, message = failing_call(fn, [1e200, -1e200])
+    assert "could not produce a number" in message
+
+
+def test_mean_survives_values_that_overflow_a_spread():
+    """The same data a spread cannot handle still has a perfectly good mean."""
+    assert pf.mean([1e200, -1e200]) == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("fn", [pf.mean, pf.standard_deviation, pf.standard_unc_of_mean])
 def test_large_but_workable_values_still_compute(fn):
     assert fn([1e150, -1e150]) is not None
 
@@ -194,7 +208,7 @@ def test_mean_matches_numpy():
 
 def test_mean_docstring_examples():
     assert pf.mean(DATA) == pytest.approx(10.07, abs=5e-3)
-    assert pf.mean(np.array([1, 2, 3, 4])) == pytest.approx(2.5)
+    assert pf.mean([1, 2, 3, 4]) == pytest.approx(2.5)
 
 
 def test_mean_returns_a_plain_float():
@@ -247,6 +261,19 @@ def test_missing_arguments_print_usage(fn, name):
 def test_too_many_arguments_print_usage():
     _, message = failing_call(pf.standard_deviation, DATA, DATA)
     assert "Usage:" in message
+
+
+def test_messages_use_jupyters_own_machine_output_colours():
+    """Pins the 1.2.0 decision: a message must not look like a course callout."""
+    assert "--jp-rendermime-error-background" in pf._ERROR_STYLE["background"]
+    assert "--jp-warn-color3" in pf._WARNING_STYLE["background"]
+    assert "--jp-content-font-color1" in pf._ERROR_STYLE["colour"]
+
+
+def test_message_boxes_are_flat_and_square():
+    """Course callouts are rounded with a left bar; these must not be."""
+    assert "border" not in pf._BOX
+    assert "border-radius" not in pf._BOX
 
 
 # Packaging
