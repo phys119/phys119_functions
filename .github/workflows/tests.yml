@@ -26,7 +26,7 @@ jobs:
         run: python -m pytest -q
 
   server-versions:
-    # What phas119.phas.ubc.ca actually runs, so a numpy difference cannot
+    # What phys119.phas.ubc.ca actually runs, so a numpy difference cannot
     # reach students without failing here first.
     runs-on: ubuntu-latest
     steps:
