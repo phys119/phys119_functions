@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.2.0 (unreleased)
+## 1.2.0 (deployed to the course JupyterHub 2026-09-23)
 
 - `t_score` arguments are renamed from `A, dA, B, dB` to `x1, dx1, x2, dx2`,
   to match the notation the course materials use. A message reading "dx2 must
