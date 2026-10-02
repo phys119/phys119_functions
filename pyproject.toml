@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Joss Ives", email = "jossives@gmail.com" }]
+authors = [{ name = "Joss Ives", email = "jossives@users.noreply.github.com" }]
 keywords = ["physics", "teaching", "uncertainty", "lab", "phys119"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -20,6 +20,10 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = ["numpy>=1.20"]
+
+[project.urls]
+Homepage = "https://github.com/phys119/phys119_functions"
+Issues = "https://github.com/phys119/phys119_functions/issues"
 
 [project.optional-dependencies]
 test = ["pytest>=7"]

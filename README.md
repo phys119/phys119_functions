@@ -57,16 +57,14 @@ functions.
 
 ## Install
 
-For the course Jupyter server, as admin, from a built wheel:
+See [INSTALL.md](INSTALL.md), which covers installing for one account, for
+every account on the Jupyter server, and using the module with no install at
+all. Every [release](https://github.com/phys119/phys119_functions/releases)
+carries its own wheel, so the shortest version is:
 
 ```
-python -m pip install phys119_functions-1.2.0-py3-none-any.whl
-```
-
-or directly from a checkout:
-
-```
-python -m pip install .
+python -m pip install --no-deps \
+    https://github.com/phys119/phys119_functions/releases/download/v1.2.0/phys119_functions-1.2.0-py3-none-any.whl
 ```
 
 ## Development
