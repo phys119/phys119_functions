@@ -7,7 +7,7 @@ name = "phys119-functions"
 version = "1.3.0"
 description = "Beginner-friendly measurement, uncertainty and plotting helpers for the UBC Phys 119 lab course"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Joss Ives", email = "jossives@users.noreply.github.com" }]

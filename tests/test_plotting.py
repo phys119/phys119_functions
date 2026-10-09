@@ -7,6 +7,7 @@ the Prelab 05 notebook; later sections cover each feature as it was added.
 Run with:  python -m pytest tests
 """
 
+import inspect
 import os
 import sys
 
@@ -652,9 +653,9 @@ def test_help_hides_private_parameters(fn):
 
 @pytest.mark.parametrize("fn", ALL_THREE)
 def test_help_lists_every_required_argument(fn):
-    doc = getattr(p, fn).__doc__
+    doc = inspect.getdoc(getattr(p, fn))
     for name in ("x", "y", "dy"):
-        assert f"\n      {name:<2} -- " in doc
+        assert f"\n  {name:<2} -- " in doc
 
 
 # --- Two copies of the module in one notebook -----------------------------------
@@ -842,7 +843,7 @@ def test_plot_residuals_exported_and_documented():
     assert "plot_residuals" in p.__all__
     assert "plot_residuals(x, y, dy, m, b) does the same." in p.plot_data.__doc__
     for name in ("x", "y", "dy", "m", "b"):
-        assert f"\n      {name:<2} -- " in p.plot_residuals.__doc__
+        assert f"\n  {name:<2} -- " in inspect.getdoc(p.plot_residuals)
 
 
 
@@ -1104,7 +1105,12 @@ def test_message_box_is_not_typeset_as_maths(monkeypatch):
 def test_rereading_the_cell_repeats_no_python_warnings(shown, capsys):
     import warnings
     with warnings.catch_warnings():
-        warnings.simplefilter("error")      # any warning would fail the test
+        # Python's warning about the student's own code, which re-reading
+        # their cell must not repeat. (Other libraries' warnings, such as
+        # matplotlib's about pyparsing, are not what this is about.)
+        warnings.simplefilter("error", SyntaxWarning)
+        warnings.filterwarnings("error", message="invalid escape sequence",
+                                category=DeprecationWarning)
         with pytest.raises(p.Phys119Error):
             p.plot_data(DxVec, FVec, dFVec, title="$\\Deltax$")
         assert p._quiet_parse('x = "$\\Delta$"') is not None

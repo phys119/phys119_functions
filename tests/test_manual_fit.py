@@ -13,6 +13,7 @@ Run with:  python -m pytest tests
 """
 
 import html
+import inspect
 import json
 import os
 import re
@@ -553,9 +554,9 @@ def test_changing_the_dictionary_keeps_the_fit_and_its_line(notebook):
 # --- Help text (step 9) ---------------------------------------------------------
 
 def test_help_lists_every_argument():
-    doc = p.manual_fit.__doc__
+    doc = inspect.getdoc(p.manual_fit)
     for name in ("x", "y", "dy"):
-        assert f"\n      {name:<2} -- " in doc
+        assert f"\n  {name:<2} -- " in doc
     for name in ("m_min, m_max --", "b_min, b_max --"):
         assert name in doc
 
@@ -571,9 +572,9 @@ def test_help_says_nothing_about_internals():
 
 @needs_anywidget
 def test_help_examples_run(notebook):
-    doc = p.manual_fit.__doc__
+    doc = inspect.getdoc(p.manual_fit)
     examples = doc[doc.index("Examples:"):doc.index("The axes are labelled")]
-    code = "\n".join(line[6:] for line in examples.splitlines()[1:])
+    code = "\n".join(line[2:] for line in examples.splitlines()[1:])
     exec(code, {"manual_fit": p.manual_fit,
                 "DxVec": DxVec, "FVec": FVec, "dFVec": dFVec})
 
