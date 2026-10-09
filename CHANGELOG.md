@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.0
+## 1.3.0 (deployed to the course JupyterHub 2026-10-09)
 
 The plotting functions join the package, so the course notebooks need
 nothing beyond `from phys119_functions import *`. The package now requires
