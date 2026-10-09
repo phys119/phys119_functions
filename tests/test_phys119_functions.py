@@ -380,7 +380,8 @@ def test_star_import_exports_only_the_public_api():
     exec("from phys119_functions import *", namespace)
     exported = {n for n in namespace if not n.startswith("__")}
     assert exported == {"t_score", "mean", "standard_deviation",
-                        "standard_unc_of_mean", "Phys119Error", "np"}
+                        "standard_unc_of_mean", "plot_data", "plot_residuals",
+                        "autofit", "manual_fit", "Phys119Error", "np"}
 
 
 def test_star_import_provides_numpy_as_a_backup():

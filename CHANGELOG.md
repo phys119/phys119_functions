@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.3.0
+
+The plotting functions join the package, so the course notebooks need
+nothing beyond `from phys119_functions import *`. The package now requires
+matplotlib, and anywidget for `manual_fit`.
+
+- `plot_data(x, y, dy, ...)` plots data with error bars. Given a slope `m`
+  (and intercept `b`, 0 if left out) it adds the straight-line model, and
+  with `residuals=True` a residuals panel underneath, whose axis reads
+  "residual = data - model". `plot_residuals(x, y, dy, m, b, ...)` is the
+  same with the residuals built in.
+- Every line is a two-parameter model, y = mx + b. The legend reads "Data",
+  "Model (y=mx+b)", then the values of m and b to three significant figures.
+  `chi2=True` adds the reduced chi-squared, which always divides by N - 2.
+- `autofit(x, y, dy, ...)` finds the line of minimum chi-squared exactly,
+  with no scipy, plots it with its residuals and returns `m, b` (also as
+  `.m`, `.b` and `.chi2`).
+- `manual_fit(x, y, dy, ...)` fits a line by hand in the notebook: a slider
+  and a number box for each of m and b, with the line, the residuals and,
+  with `chi2=True`, the reduced chi-squared updating as they move. Each
+  slider step moves the residuals by about a tenth of the smallest error
+  bar. Each fit is named for the student (`manual_fit1`, `manual_fit2`, ...)
+  and `manual_fit1.m` and `.b` hold wherever the sliders were left. The line
+  is remembered beside the notebook, so re-running the cell, even after a
+  restart, brings it back; a button resets it. Exported notebooks show a
+  still picture of the fit.
+- Axis labels default to the variable names typed in the call, such as
+  `DxVec`. Titles, axis labels and legend entries accept LaTeX between `$`
+  signs, in ordinary strings with doubled backslashes or in raw strings.
+- Label mistakes get a short message instead of matplotlib's long error and
+  a blank figure, read from how the label was typed, with the fix written in
+  the same form: an unknown command, a `$` or `{` without a partner, a
+  single backslash that Python turned into a special character (offering
+  both an `r` prefix and doubled backslashes), doubled backslashes in a raw
+  string, a `\n` that would show as text, and LaTeX outside `$...$`.
+- Messages are kept out of MathJax's reach, so a `$` in a message is never
+  typeset as maths.
+- Re-reading the student's cell (for labels and fit names) no longer repeats
+  Python's own warnings about it.
+- A call whose arguments fit the function but whose values cannot be used
+  no longer gets the usage message, which wrongly told the student their
+  call was malformed. It now says the values could not be worked with, with
+  Python's own reason, and points to `help()`.
+- `help()` no longer lists parameters meant only for use inside the module.
+- Two copies of the module imported in one notebook (an installed one and a
+  file beside the notebook, say) both keep their tracebacks hidden; before,
+  the second import undid the first one's.
+
 ## 1.2.0 (deployed to the course JupyterHub 2026-09-23)
 
 - `t_score` arguments are renamed from `A, dA, B, dB` to `x1, dx1, x2, dx2`,
