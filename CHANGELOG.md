@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.4.0
+## 1.4.0 (deployed to the course JupyterHub 2026-10-16)
 
 `autofit` gives the uncertainties in the best-fit slope and intercept, and
 names its results the way `manual_fit` does; `manual_fit`'s legend now reads
