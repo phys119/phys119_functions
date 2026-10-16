@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.4.0
+
+`autofit` gives the uncertainties in the best-fit slope and intercept, and
+names its results the way `manual_fit` does; `manual_fit`'s legend now reads
+like the others'.
+
+- `autofit` also calculates the uncertainties in the slope and intercept,
+  $\delta m$ and $\delta b$, from the standard weighted least-squares
+  formulas, worked out from the weighted mean of x so that they keep their
+  precision for x far from zero. Each uncertainty is shown to 2 significant
+  figures, and its value rounded to the same decimal place, with a shared
+  power of ten for very large or small numbers: `m = 2.080 ± 0.056`.
+- Its legend reads like `plot_data`'s: Data, "Best fit (y=mx+b)",
+  m ± δm, b ± δb, then the reduced chi-squared, which is now shown by
+  default (`chi2=False` hides it).
+- `autofit` no longer gives back its result. Like `manual_fit`, it names it
+  `autofit1`, `autofit2`, and so on, creates that variable in the notebook,
+  and prints it under the plot with a sentence listing what it holds
+  (`autofit1.m`, `.dm`, `.b`, `.db` and `.chi2`). A name follows the
+  notebook cell and the call as typed, and is saved in the same file beside
+  the notebook that `manual_fit` uses, so it stays the same when the cell is
+  run again, even after a restart. `autofit1` on its own shows the summary
+  line, and it still unpacks as `m, b = autofit1`.
+- `manual_fit`'s legend, in the widget and in its still picture for exports,
+  now reads like `plot_data`'s: Data, "Model (y=mx+b)", the current m and b
+  to 3 significant figures (updating as the sliders move), then the reduced
+  chi-squared if asked for.
+
 ## 1.3.0 (deployed to the course JupyterHub 2026-10-09)
 
 The plotting functions join the package, so the course notebooks need

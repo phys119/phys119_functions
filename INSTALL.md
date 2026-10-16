@@ -8,7 +8,7 @@ Three routes. Pick by who needs it.
 | [The whole Jupyter server](#the-whole-jupyter-server) | every account on the hub | yes |
 | [No install at all](#no-install-at-all) | anyone with a notebook and no setup | no |
 
-Replace `v1.3.0` and `1.3.0` throughout with the version you want. The
+Replace `v1.4.0` and `1.4.0` throughout with the version you want. The
 versions available are listed at
 https://github.com/phys119/phys119_functions/releases.
 
@@ -17,7 +17,7 @@ https://github.com/phys119/phys119_functions/releases.
 In a notebook cell:
 
 ```
-%pip install --user --no-deps --no-cache-dir https://github.com/phys119/phys119_functions/releases/download/v1.3.0/phys119_functions-1.3.0-py3-none-any.whl
+%pip install --user --no-deps --no-cache-dir https://github.com/phys119/phys119_functions/releases/download/v1.4.0/phys119_functions-1.4.0-py3-none-any.whl
 ```
 
 **Restart the kernel afterwards** (Kernel > Restart Kernel). Python adds your
@@ -51,7 +51,7 @@ it below.
 ```
 sudo -H bash -c 'umask 022; /opt/tljh/user/bin/python -m pip install \
      --no-deps --no-cache-dir \
-     https://github.com/phys119/phys119_functions/releases/download/v1.3.0/phys119_functions-1.3.0-py3-none-any.whl'
+     https://github.com/phys119/phys119_functions/releases/download/v1.4.0/phys119_functions-1.4.0-py3-none-any.whl'
 
 sudo /opt/tljh/user/bin/python -m pip check
 ls -ld /opt/tljh/user/lib/python3.10/site-packages/phys119_functions*
@@ -91,7 +91,7 @@ repository runs that check and prints one pass or fail verdict.
 
 Download the module and put it beside your notebook:
 
-https://raw.githubusercontent.com/phys119/phys119_functions/v1.3.0/src/phys119_functions.py
+https://raw.githubusercontent.com/phys119/phys119_functions/v1.4.0/src/phys119_functions.py
 
 Python imports a module from the notebook's own folder before any installed
 one, so that file is what `from phys119_functions import *` will use. Nothing

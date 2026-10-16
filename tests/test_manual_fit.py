@@ -711,12 +711,31 @@ def test_manual_fit_picture_carries_chi2(notebook, monkeypatch):
     seen = []
     original = p._draw_data_and_model
     monkeypatch.setattr(p, "_draw_data_and_model",
-                        lambda *a: seen.append(a[-1]) or original(*a))
+                        lambda *a: seen.append(a[-2:]) or original(*a))
     picture = p._manual_fit_picture(DxVec, FVec, dFVec, 2.0, 0.0,
                                     {"data_label": "Data", "model_label": "model",
                                      "x_label": "x", "y_label": "y", "chi2": True})
     assert picture[:8] == b"\x89PNG\r\n\x1a\n"
-    assert seen and seen[0].startswith("$\\chi^2 = ")
+    extra, parameters = seen[0]
+    assert extra.startswith("$\\chi^2 = ")
+    assert parameters == ["$\\mathrm{m} = 2.00$", "$\\mathrm{b} = 0.00$"]
+
+
+@needs_anywidget
+def test_manual_fit_legend_reads_like_plot_data(notebook, monkeypatch):
+    # Data, Model (y=mx+b), m, b and chi-squared, in plot_data's order
+    axes = []
+    original = p._draw_data_and_model
+    monkeypatch.setattr(p, "_draw_data_and_model",
+                        lambda ax, *a: axes.append(ax) or original(ax, *a))
+    p._manual_fit_picture(DxVec, FVec, dFVec, 2.0, 0.0,
+                          {"data_label": "Data", "model_label": "Model (y=mx+b)",
+                           "x_label": "x", "y_label": "y", "chi2": True})
+    texts = [t.get_text() for t in axes[0].get_legend().get_texts()]
+    assert texts[:4] == ["Data", "Model (y=mx+b)", "$\\mathrm{m} = 2.00$", "$\\mathrm{b} = 0.00$"]
+    assert texts[4].startswith("$\\chi^2 = ") and len(texts) == 5
+    # the widget is given the same model label
+    assert '"model_label": "Model (y=mx+b)"' in inspect.getsource(p.manual_fit)
 
 
 

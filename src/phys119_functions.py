@@ -51,7 +51,7 @@ import matplotlib.pyplot as plt
 
 # Kept in step with the installed package, bumped together. A ".dev0"
 # suffix marks shared code that is ahead of the deployed package.
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 __all__ = [
     "t_score",
@@ -1090,6 +1090,49 @@ def _parameter_legend_text(name, value):
     return rf"$\mathrm{{{name}}} = {shown}$"
 
 
+def _value_with_uncertainty(value, uncertainty):
+    """value and its uncertainty as text: the uncertainty to 2 significant
+    figures, and the value rounded to the same decimal place, as
+    ("2.083", "0.031", None). A power of ten shared by both, as for
+    _three_sig_figs, is used from 1000 up and below 0.001 (judged by the
+    larger of the two): ("2.083", "0.031", 3) for 2083 ± 31."""
+    if not (np.isfinite(value) and np.isfinite(uncertainty)) or uncertainty <= 0:
+        return f"{value:.4g}", f"{uncertainty:.2g}", None
+    exponent = int(np.floor(np.log10(max(abs(value), uncertainty))))
+    if -3 <= exponent < 3:
+        exponent = None
+    else:
+        value, uncertainty = value / 10**exponent, uncertainty / 10**exponent
+    # The decimal place of the uncertainty's second significant figure;
+    # rounding can carry into a new digit (0.0996 -> 0.10), so check again.
+    place = int(np.floor(np.log10(uncertainty))) - 1
+    if round(uncertainty, -place) >= 10.0**(place + 2):
+        place += 1
+    decimals = max(0, -place)
+    shown_value = round(value, -place) + 0.0          # + 0.0 turns -0.0 into 0.0
+    return (f"{shown_value:.{decimals}f}", f"{round(uncertainty, -place):.{decimals}f}",
+            exponent)
+
+
+def _uncertainty_legend_text(name, value, uncertainty):
+    """'m = 2.083 ± 0.031' for autofit's legend, in math text like
+    _parameter_legend_text."""
+    shown_value, shown_uncertainty, exponent = _value_with_uncertainty(value, uncertainty)
+    shown = rf"{shown_value} \pm {shown_uncertainty}"
+    if exponent is not None:
+        shown = rf"({shown}) \times 10^{{{exponent}}}"
+    return rf"$\mathrm{{{name}}} = {shown}$"
+
+
+def _uncertainty_plain_text(name, value, uncertainty):
+    """'m = 2.083 ± 0.031' as plain text, for autofit's printed summary."""
+    shown_value, shown_uncertainty, exponent = _value_with_uncertainty(value, uncertainty)
+    shown = f"{shown_value} ± {shown_uncertainty}"
+    if exponent is not None:
+        shown = f"({shown})×10^{exponent}"
+    return f"{name} = {shown}"
+
+
 def _draw_data_and_model(ax, x, y, dy, m, b, data_label, model_label,
                          num_model_points, extra_label=None, parameter_labels=None):
     """Draw the data with error bars, the model line if m is given, and the
@@ -1198,9 +1241,12 @@ def _plot_data(fn_name, x, y, dy, m, b, title, x_label, y_label, data_label,
     if chi2:
         extra = _chi2_legend_text(_reduced_chi2(x, y, dy, m, b, len(x) - _dof))
 
-    # The legend lists the line's parameters, m and b.
+    # The legend lists the line's parameters, m and b. autofit passes its own
+    # lines, which add each value's uncertainty.
     parameters = None
-    if m is not None and _parameters_in_legend:
+    if m is not None and isinstance(_parameters_in_legend, (list, tuple)):
+        parameters = list(_parameters_in_legend)
+    elif m is not None and _parameters_in_legend:
         parameters = [_parameter_legend_text("m", m), _parameter_legend_text("b", b)]
 
     if not residuals:
@@ -1441,29 +1487,67 @@ def _weighted_line_fit(x, y, dy):
     return float(m), float(b)
 
 
-class BestFit(tuple):
-    """The best-fit slope and intercept found by autofit.
+def _line_fit_uncertainties(x, dy):
+    """The uncertainties in the best-fit slope and intercept, dm and db.
 
-    Unpacks like a pair, so `m, b = autofit(...)` works, and the two
-    values are also available as `.m` and `.b`. Both are plain floats. When
-    the result is not assigned, a notebook shows it as one tidy line under the
-    plot instead of a pair of numbers at full precision.
+    The textbook forms are dm = sqrt(S / Z) and db = sqrt(Sxx / Z), with
+    S = sum(1/dy^2), Sxx = sum(x^2/dy^2) and Z = S*Sxx - Sx^2. Measured from
+    the weighted mean of x, as in _weighted_line_fit, the same values are
+
+        dm = 1 / sqrt(sum((x - xbar)^2 / dy^2))
+        db = sqrt(1 / S + (xbar * dm)^2)
+
+    which avoid Z's loss of precision for x far from zero, and are worked
+    out with the same relative weights and scaled distances, so that they
+    cannot overflow. Returns nan values if anything is not finite.
+    """
+    with np.errstate(all='ignore'):
+        dy_min = np.min(dy)
+        w = (dy_min / dy)**2
+        x_bar = np.sum(w * x) / np.sum(w)
+        dx = x - x_bar
+        scale = np.max(np.abs(dx))
+        u = dx / scale
+        dm = dy_min / (scale * np.sqrt(np.sum(w * u**2)))
+        db = np.sqrt(dy_min**2 / np.sum(w) + (x_bar * dm)**2)
+    if not (np.isfinite(dm) and np.isfinite(db)):
+        return float("nan"), float("nan")
+    return float(dm), float(db)
+
+
+class BestFit(tuple):
+    """A best fit found by autofit, held in the notebook as autofit1,
+    autofit2, and so on.
+
+    .m and .b give the best-fit slope and intercept, .dm and .db their
+    uncertainties, and .chi2 the reduced chi-squared, all as plain floats:
+
+      autofit1.m, autofit1.dm      the slope and its uncertainty
+      autofit1.b, autofit1.db      the intercept and its uncertainty
+      autofit1.chi2                the reduced chi-squared
+
+    It also unpacks like a pair, so `m, b = autofit1` works. Shown on its
+    own, it is the one-line summary autofit prints.
     """
 
-    def __new__(cls, m, b, chi2=None, show_chi2=False):
+    def __new__(cls, m, b, chi2=None, show_chi2=False, dm=None, db=None, name="autofit"):
         fit = super().__new__(cls, (float(m), float(b)))
         fit._chi2 = None if chi2 is None else float(chi2)
         fit._show_chi2 = bool(show_chi2)
+        fit._dm = None if dm is None else float(dm)
+        fit._db = None if db is None else float(db)
+        fit._name = str(name)
         return fit
 
     def __getnewargs__(self):
         # copy and pickle rebuild a tuple subclass from this
-        return (self[0], self[1], self._chi2, self._show_chi2)
+        return (self[0], self[1], self._chi2, self._show_chi2, self._dm, self._db,
+                self._name)
 
     @property
-    def chi2(self):
-        """The reduced chi-squared of the best-fit line (divided by N - 2)."""
-        return self._chi2
+    def name(self):
+        """The variable that holds this fit in the notebook, such as autofit1."""
+        return self._name
 
     @property
     def m(self):
@@ -1473,12 +1557,73 @@ class BestFit(tuple):
     def b(self):
         return self[1]
 
+    @property
+    def dm(self):
+        """The uncertainty in the best-fit slope m."""
+        return self._dm
+
+    @property
+    def db(self):
+        """The uncertainty in the best-fit intercept b."""
+        return self._db
+
+    @property
+    def chi2(self):
+        """The reduced chi-squared of the best-fit line (divided by N - 2)."""
+        return self._chi2
+
     def __repr__(self):
-        text = f"best fit: m = {self.m:.4g}, b = {self.b:.4g}"
+        if self._dm is None or self._db is None:
+            text = f"{self._name}: m = {self.m:.4g}, b = {self.b:.4g}"
+        else:
+            text = (f"{self._name}: {_uncertainty_plain_text('m', self.m, self._dm)}, "
+                    f"{_uncertainty_plain_text('b', self.b, self._db)}")
         if self._show_chi2 and self._chi2 is not None:
             mantissa, exponent = _three_sig_figs(self._chi2)
             text += f", χ² = {mantissa}" + ("" if exponent is None else f"×10^{exponent}")
         return text
+
+
+# Every best fit made in this kernel, by what identifies it (its cell and its
+# call as typed), newest last. The names are also saved beside the notebook
+# with manual_fit's, so a fit keeps its name after a restart.
+_autofits = {}
+
+
+def _autofit_key(frame, x, y, dy):
+    """What identifies a best fit: its notebook cell and its call as typed,
+    as for manual_fit. Without the call's text, the data stand in for it."""
+    cell = _current_cell_id()
+    where = f"cell {cell} | " if cell else ""
+    call = _typed_call('autofit', frame)
+    if call is not None:
+        try:
+            return where + "call: " + ast.unparse(call)
+        except Exception:
+            pass
+    return where + "autofit data: " + json.dumps([x.tolist(), y.tolist(), dy.tolist()])
+
+
+def _announce_autofit(fit, values):
+    """Print the fit's summary line and say which variable holds it.
+
+    Printed as ordinary output, so it is kept when the notebook is saved or
+    exported. values lists the attributes the sentence names.
+    """
+    print(repr(fit))
+    names = [f"{fit.name}.{value}" for value in values]
+    listed = ", ".join(names[:-1]) + " and " + names[-1]
+    pair = _notebook_display()
+    if pair is None:
+        print(f"{listed} hold these values at full precision.")
+        return
+    display, HTML = pair
+    code = lambda text: f"<code>{html.escape(text)}</code>"
+    listed_html = ", ".join(code(n) for n in names[:-1]) + " and " + code(names[-1])
+    display(HTML(
+        '<div style="font-family: sans-serif; font-size: 13px;">'
+        f"{listed_html} hold these values at full precision.</div>"
+    ))
 
 
 @_friendly_errors
@@ -1491,7 +1636,7 @@ def autofit(
     residuals=True,
     num_model_points=100,
     figsize=None,
-    chi2=False,
+    chi2=True,
 ):
     """Finds the straight line y = m*x + b that best fits your data, and
     plots it with the residuals underneath, as plot_data does with
@@ -1505,23 +1650,31 @@ def autofit(
 
     Needs at least 3 data points and at least two different x values.
 
-    The best-fit slope m and intercept b are shown in the legend, and are
-    also given back, so you can use them in later cells:
+    The best fit is the line with the smallest chi-squared. The legend gives
+    its slope m and intercept b, each with its uncertainty, and the reduced
+    chi-squared (divided by N - 2). Each uncertainty is given to 2
+    significant figures, and its value to the same decimal place.
 
-      m, b = autofit(x=DxVec, y=FVec, dy=dFVec)
+    You do not need to store anything. Each best fit is given a name:
+    autofit1 for the first, autofit2 for the next, and so on. The name is
+    printed under the graph with the values, as a line such as:
 
-    If you do not store them, they are shown under the graph instead, as a
-    line such as:  best fit: m = 2.08, b = 0.004742
+      autofit1: m = 2.080 ± 0.056, b = 0.005 ± 0.015, χ² = 0.663
+
+    and in later cells it gives the values at full precision:
+
+      autofit1.m, autofit1.dm      the slope and its uncertainty
+      autofit1.b, autofit1.db      the intercept and its uncertainty
+      autofit1.chi2                the reduced chi-squared
+
+    Running the cell again, even after restarting the kernel, keeps the
+    same name.
 
     Optional: title, x_label, y_label, data_label and figsize, all as for
-    plot_data, residuals=False to leave out the residuals graph, and
-    chi2=True to add the reduced chi-squared of the best fit to the legend
-    (divided by N - 2). It is also given back as .chi2:
-
-      fit = autofit(x=DxVec, y=FVec, dy=dFVec)
-      fit.chi2 Without
-    x_label and y_label, the axes show the variable names you typed for x
-    and y.
+    plot_data; residuals=False to leave out the residuals graph; and
+    chi2=False to leave the reduced chi-squared out of the legend and the
+    printed line (autofit1.chi2 still holds it). Without x_label and
+    y_label, the axes show the variable names you typed for x and y.
 
     Example:
       autofit(
@@ -1560,7 +1713,8 @@ def autofit(
     )
 
     m_fit, b_fit = _weighted_line_fit(x, y, dy)
-    if _as_finite_number(m_fit) is None or _as_finite_number(b_fit) is None:
+    dm_fit, db_fit = _line_fit_uncertainties(x, dy)
+    if any(_as_finite_number(v) is None for v in (m_fit, b_fit, dm_fit, db_fit)):
         _fail('autofit',
             "autofit() could not find a best-fit line for this data.\n"
             "\n"
@@ -1568,11 +1722,18 @@ def autofit(
             "cell again."
         )
 
-    model_label = (
-        f"y = mx + b (best fit)\n"
-        f"m = {m_fit:.4g}\n"
-        f"b = {b_fit:.4g}"
-    )
+    # The fit's name: kept from an earlier run of the same cell and call
+    # (in this kernel, or saved beside the notebook), or the next free one.
+    frame = _student_frame()
+    key = _autofit_key(frame, x, y, dy)
+    path = _manual_fit_store_path(frame)
+    stored = _manual_fit_store_read(path)
+    if key in _autofits:
+        name = _autofits[key].name
+    else:
+        names_in_use = {e.get("name") for e in stored.values() if isinstance(e, dict)}
+        names_in_use |= {fit.name for fit in _autofits.values()}
+        name = _manual_fit_name(key, stored, names_in_use, prefix="autofit")
 
     plot_data(
         x=x, y=y, dy=dy,
@@ -1581,18 +1742,30 @@ def autofit(
         x_label=x_label,
         y_label=y_label,
         data_label=data_label,
-        model_label=model_label,
+        model_label="Best fit (y=mx+b)",
         residuals=residuals,
         num_model_points=num_model_points,
         figsize=figsize,
         chi2=chi2,
         _suppress_checks=True,
         _dof=2,
-        _parameters_in_legend=False,     # autofit's own legend lists m and b
+        _parameters_in_legend=[_uncertainty_legend_text("m", m_fit, dm_fit),
+                               _uncertainty_legend_text("b", b_fit, db_fit)],
     )
 
-    return BestFit(m_fit, b_fit, _reduced_chi2(x, y, dy, m_fit, b_fit, len(x) - 2),
-                   show_chi2=chi2)
+    fit = BestFit(m_fit, b_fit, _reduced_chi2(x, y, dy, m_fit, b_fit, len(x) - 2),
+                  show_chi2=chi2, dm=dm_fit, db=db_fit, name=name)
+    _autofits.pop(key, None)
+    _autofits[key] = fit                       # newest last
+    if path is not None and stored.get(key, {}).get("name") != name:
+        stored[key] = {"name": name}
+        _manual_fit_store_write(path, stored)
+
+    # The fit's name becomes a variable in the student's notebook.
+    if frame is not None:
+        frame.f_globals[name] = fit
+
+    _announce_autofit(fit, ["m", "dm", "b", "db", "chi2"])
 
 
 # ---------------------------------------------------------------------------
@@ -1751,29 +1924,26 @@ function threeSigFigs(value) {
     return rounded.toFixed(Math.max(0, 2 - exponent));
 }
 
-function drawLegend(ctx, box, modelLabel, dataLabel, extraLabel) {
+// The legend, as plot_data's reads: the data, the model line, then lines of
+// text (m, b and, if asked for, chi-squared).
+function drawLegend(ctx, box, dataLabel, modelLabel, textLines) {
     ctx.font = "11px sans-serif";
     ctx.textAlign = "left"; ctx.textBaseline = "middle";
     const lx = box.left + 8, ly = box.top + 12;
-    const texts = [modelLabel, dataLabel].concat(extraLabel ? [extraLabel] : []);
+    const texts = [dataLabel, modelLabel].concat(textLines);
     const width = 24 + Math.max(...texts.map((t) => ctx.measureText(t).width));
     const height = 18 * texts.length;
     ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
     ctx.strokeStyle = "#cccccc"; ctx.lineWidth = 1;
     ctx.fillRect(lx - 4, ly - 9, width + 8, height);
     ctx.strokeRect(lx - 4, ly - 9, width + 8, height);
-    if (extraLabel) {
-        ctx.fillStyle = BLACK;
-        ctx.fillText(extraLabel, lx + 24, ly + 36);
-    }
-    ctx.strokeStyle = RED; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 16, ly); ctx.stroke();
-    ctx.strokeStyle = BLUE; ctx.fillStyle = BLUE;
-    ctx.beginPath(); ctx.moveTo(lx + 8, ly + 13); ctx.lineTo(lx + 8, ly + 23); ctx.stroke();
-    ctx.beginPath(); ctx.arc(lx + 8, ly + 18, 2.5, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = BLUE; ctx.fillStyle = BLUE; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(lx + 8, ly - 5); ctx.lineTo(lx + 8, ly + 5); ctx.stroke();
+    ctx.beginPath(); ctx.arc(lx + 8, ly, 2.5, 0, 2 * Math.PI); ctx.fill();
+    ctx.strokeStyle = RED;
+    ctx.beginPath(); ctx.moveTo(lx, ly + 18); ctx.lineTo(lx + 16, ly + 18); ctx.stroke();
     ctx.fillStyle = BLACK;
-    ctx.fillText(modelLabel, lx + 24, ly);
-    ctx.fillText(dataLabel, lx + 24, ly + 18);
+    texts.forEach((text, i) => ctx.fillText(text, lx + 24, ly + 18 * i));
 }
 
 function render({ model, el }) {
@@ -1926,7 +2096,9 @@ function render({ model, el }) {
             }
             chi2Label = "χ² = " + threeSigFigs(sum / dof);
         }
-        drawLegend(mainCtx, mainBox, labels.model_label, labels.data_label, chi2Label);
+        const textLines = ["m = " + threeSigFigs(m), "b = " + threeSigFigs(b)];
+        drawLegend(mainCtx, mainBox, labels.data_label, labels.model_label,
+                   chi2Label ? textLines.concat([chi2Label]) : textLines);
 
         // Residuals, data - model, on a symmetric scale in 1-2-5 steps so it
         // changes in jumps rather than wobbling with every slider movement.
@@ -2200,15 +2372,16 @@ def _manual_fit_key(frame, x, y, dy, m_range, b_range):
         [x.tolist(), y.tolist(), dy.tolist(), m_range, b_range])
 
 
-def _manual_fit_name(key, stored, names_in_use):
-    """The fit's name: its saved one, or the next free manual_fitN."""
+def _manual_fit_name(key, stored, names_in_use, prefix="manual_fit"):
+    """The fit's name: its saved one, or the next free manual_fitN (or,
+    for autofit, autofitN)."""
     entry = stored.get(key)
     if isinstance(entry, dict) and isinstance(entry.get("name"), str):
         return entry["name"]
     number = 1
-    while f"manual_fit{number}" in names_in_use:
+    while f"{prefix}{number}" in names_in_use:
         number += 1
-    return f"manual_fit{number}"
+    return f"{prefix}{number}"
 
 
 class ManualFit:
@@ -2279,7 +2452,8 @@ def _manual_fit_picture(x, y, dy, m, b, labels):
     if labels.get("chi2") and len(x) > 2:
         extra = _chi2_legend_text(_reduced_chi2(x, y, dy, m, b, len(x) - 2))
     _draw_data_and_model(ax_top, x, y, dy, m, b, labels["data_label"],
-                         labels["model_label"], 100, extra)
+                         labels["model_label"], 100, extra,
+                         [_parameter_legend_text("m", m), _parameter_legend_text("b", b)])
     ax_top.set_ylabel(labels["y_label"])
     ax_top.grid(True, alpha=0.3)
     _draw_residuals(ax_bot, x, y, dy, m, b, labels["x_label"])
@@ -2443,7 +2617,7 @@ def manual_fit(x, y, dy, m_min=None, m_max=None, b_min=None, b_max=None,
         labels={
             "x_label": typed.get('x', "x (default name)"),
             "y_label": typed.get('y', "y (default name)"),
-            "data_label": "Data", "model_label": "y = mx + b (model)",
+            "data_label": "Data", "model_label": "Model (y=mx+b)",
             "residual_y_label": RESIDUAL_LABEL,
             "chi2": bool(chi2),
         },

@@ -8,7 +8,9 @@ Run with:  python -m pytest tests
 """
 
 import inspect
+import json
 import os
+import re
 import sys
 
 import matplotlib
@@ -19,6 +21,13 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import phys119_functions as p  # noqa: E402
+
+
+def autofit_result(*args, **kwargs):
+    """Run autofit, which gives nothing back, and return the best fit it
+    has just named (autofit1, autofit2, ...)."""
+    assert p.autofit(*args, **kwargs) is None
+    return list(p._autofits.values())[-1]
 
 
 # Prelab05_new.ipynb cell 23: spring data
@@ -132,10 +141,7 @@ def test_prelab_cell59_autofit(shown):
     )
     top, bottom = shown[0].axes
     m_fit, b_fit = weighted_line_fit(DxVec, FVec, dFVec)
-    model_entry = legend_texts(top)[0]
-    assert model_entry == (
-        f"y = mx + b (best fit)\nm = {m_fit:.4g}\nb = {b_fit:.4g}"
-    )
+    assert legend_texts(top)[:2] == ["Data", "Best fit (y=mx+b)"]
     np.testing.assert_allclose(
         errorbar_y(bottom), FVec - (m_fit * DxVec + b_fit), atol=1e-12)
 
@@ -557,7 +563,7 @@ def test_extreme_values_give_the_right_line_not_zero(shown, xv, yv, sv, slope):
     ([2000.0, 2001, 2002, 2003, 2004], [5.0, 5.2, 5.5, 5.6, 5.9], [0.1] * 5, (0.22, -435.0)),
 ])
 def test_autofit_is_the_exact_chi_squared_minimum(shown, xv, yv, sv, expected):
-    fit = p.autofit(xv, yv, sv)
+    fit = autofit_result(xv, yv, sv)
     assert fit.m == pytest.approx(expected[0], rel=1e-12)
     assert fit.b == pytest.approx(expected[1], rel=1e-12, abs=1e-12)
 
@@ -565,7 +571,7 @@ def test_autofit_is_the_exact_chi_squared_minimum(shown, xv, yv, sv, expected):
 def test_autofit_weights_points_by_their_uncertainty(shown):
     # Two tight points at y = x and one loose point far off the line: the
     # best fit stays close to y = x.
-    fit = p.autofit([0.0, 1.0, 2.0], [0.0, 1.0, 5.0], [0.01, 0.01, 10.0])
+    fit = autofit_result([0.0, 1.0, 2.0], [0.0, 1.0, 5.0], [0.01, 0.01, 10.0])
     assert fit.m == pytest.approx(1.0, abs=1e-3)
     assert fit.b == pytest.approx(0.0, abs=1e-3)
 
@@ -573,7 +579,7 @@ def test_autofit_weights_points_by_their_uncertainty(shown):
 # --- Step 6: autofit returns the best fit ------------------------------
 
 def test_autofit_returns_m_and_b(shown):
-    m, b = p.autofit(DxVec, FVec, dFVec)
+    m, b = autofit_result(DxVec, FVec, dFVec)
     m_exact, b_exact = weighted_line_fit(DxVec, FVec, dFVec)
     assert m == pytest.approx(m_exact, abs=1e-6)
     assert b == pytest.approx(b_exact, abs=1e-6)
@@ -581,28 +587,34 @@ def test_autofit_returns_m_and_b(shown):
 
 
 def test_result_offers_m_and_b_by_name(shown):
-    fit = p.autofit(DxVec, FVec, dFVec)
+    fit = autofit_result(DxVec, FVec, dFVec)
     assert (fit.m, fit.b) == tuple(fit)
 
 
 def test_result_displays_as_one_tidy_line(shown):
-    fit = p.autofit(DxVec, FVec, dFVec)
-    assert repr(fit) == f"best fit: m = {fit.m:.4g}, b = {fit.b:.4g}"
+    fit = autofit_result(DxVec, FVec, dFVec)
+    mantissa, _ = p._three_sig_figs(fit.chi2)
+    assert repr(fit) == (f"{fit.name}: {p._uncertainty_plain_text('m', fit.m, fit.dm)}, "
+                         f"{p._uncertainty_plain_text('b', fit.b, fit.db)}, "
+                         f"\u03c7\u00b2 = {mantissa}")
     assert str(fit) == repr(fit)
 
 
 def test_result_line_matches_the_legend(shown):
-    fit = p.autofit(DxVec, FVec, dFVec)
-    assert legend_texts(shown[0].axes[0])[0] == (
-        f"y = mx + b (best fit)\nm = {fit.m:.4g}\nb = {fit.b:.4g}")
+    fit = autofit_result(DxVec, FVec, dFVec)
+    assert legend_texts(shown[0].axes[0])[2:4] == [
+        p._uncertainty_legend_text("m", fit.m, fit.dm),
+        p._uncertainty_legend_text("b", fit.b, fit.db)]
 
 
-def test_notebook_shows_the_tidy_line(shown):
+def test_notebook_shows_the_tidy_line(shown, capsys):
     from IPython.core.interactiveshell import InteractiveShell
     shell = InteractiveShell.instance()
-    fit = p.autofit(DxVec, FVec, dFVec)
+    shell.user_ns.update(p=p, DxVec=DxVec, FVec=FVec, dFVec=dFVec)
+    shell.run_cell("p.autofit(DxVec, FVec, dFVec)")
+    fit = list(p._autofits.values())[-1]
     shown_text = shell.display_formatter.format(fit)[0]["text/plain"]
-    assert shown_text == repr(fit)
+    assert shown_text == repr(fit)                  # shown later, on its own
 
 
 # --- Step 7: internal tidying --------------------------------------------------
@@ -639,8 +651,9 @@ def test_extra_positional_argument_cannot_skip_the_checks(shown, capsys):
 
 def test_help_example_result_line_is_the_real_fit(shown):
     """The line quoted in help(autofit) is what the Prelab data give."""
-    fit = p.autofit(x=DxVec, y=FVec, dy=dFVec)
-    assert f"line such as:  {fit!r}" in p.autofit.__doc__
+    fit = autofit_result(x=DxVec, y=FVec, dy=dFVec)
+    line = repr(fit).replace(fit.name, "autofit1", 1)
+    assert f"line such as:\n\n  {line}\n" in inspect.getdoc(p.autofit)
 
 
 @pytest.mark.parametrize("fn", ALL_THREE)
@@ -729,7 +742,7 @@ def test_ragged_data_is_an_error_not_a_traceback(shown, capsys):
 
 
 def test_whole_fit_passed_as_m_gets_a_hint(shown, capsys):
-    fit = p.autofit(x, y, dy)
+    fit = autofit_result(x, y, dy)
     capsys.readouterr()
     with pytest.raises(p.Phys119Error):
         p.plot_data(x, y, dy, m=fit)
@@ -741,7 +754,7 @@ def test_whole_fit_passed_as_m_gets_a_hint(shown, capsys):
 def test_best_fit_survives_copy_and_pickle(shown):
     import copy
     import pickle
-    fit = p.autofit(x, y, dy)
+    fit = autofit_result(x, y, dy)
     for clone in (copy.copy(fit), copy.deepcopy(fit), pickle.loads(pickle.dumps(fit))):
         assert clone == fit and type(clone) is p.BestFit and clone.m == fit.m
 
@@ -764,7 +777,7 @@ def test_label_lookup_survives_any_failure(shown, monkeypatch):
 def test_autofit_needs_no_scipy(shown, monkeypatch):
     monkeypatch.setitem(sys.modules, "scipy", None)
     monkeypatch.setitem(sys.modules, "scipy.optimize", None)
-    m, b = p.autofit(DxVec, FVec, dFVec)
+    m, b = autofit_result(DxVec, FVec, dFVec)
     assert (m, b) == pytest.approx(weighted_line_fit(DxVec, FVec, dFVec), rel=1e-12)
 
 
@@ -917,7 +930,7 @@ def test_chi2_needs_at_least_3_points(shown, capsys, b_kwargs):
 
 
 def test_autofit_chi2_in_legend_and_result(shown):
-    fit = p.autofit(DxVec, FVec, dFVec, chi2=True)
+    fit = autofit_result(DxVec, FVec, dFVec, chi2=True)
     expected = chi2_by_hand(DxVec, FVec, dFVec, fit.m, fit.b, len(DxVec) - 2)
     assert fit.chi2 == pytest.approx(expected, rel=1e-12)
     assert legend_chi2(shown[0].axes[0])[-1] == p._chi2_legend_text(expected)
@@ -926,9 +939,9 @@ def test_autofit_chi2_in_legend_and_result(shown):
 
 
 def test_autofit_chi2_available_without_the_legend_line(shown):
-    fit = p.autofit(DxVec, FVec, dFVec)
+    fit = autofit_result(DxVec, FVec, dFVec, chi2=False)
     assert fit.chi2 is not None
-    assert len(legend_texts(shown[0].axes[0])) == 2
+    assert len(legend_texts(shown[0].axes[0])) == 4
     assert "\u03c7" not in repr(fit)
     m, b = fit                                     # still unpacks as a pair
 
@@ -936,7 +949,7 @@ def test_autofit_chi2_available_without_the_legend_line(shown):
 def test_autofit_result_with_chi2_survives_copy_and_pickle(shown):
     import copy
     import pickle
-    fit = p.autofit(DxVec, FVec, dFVec, chi2=True)
+    fit = autofit_result(DxVec, FVec, dFVec, chi2=True)
     for clone in (copy.deepcopy(fit), pickle.loads(pickle.dumps(fit))):
         assert clone.chi2 == fit.chi2 and repr(clone) == repr(fit)
 
@@ -980,11 +993,13 @@ def test_plot_residuals_has_the_same_legend(shown):
     assert legend_texts(shown[0].axes[0]) == legend_texts(shown[1].axes[0])
 
 
-def test_autofit_legend_is_unchanged(shown):
-    fit = p.autofit(DxVec, FVec, dFVec, chi2=True)
-    texts = legend_texts(shown[0].axes[0])
-    assert texts[0] == f"y = mx + b (best fit)\nm = {fit.m:.4g}\nb = {fit.b:.4g}"
-    assert texts[1] == "Data" and texts[2].startswith("$\\chi^2 = ") and len(texts) == 3
+def test_autofit_legend_reads_like_plot_data(shown):
+    fit = autofit_result(DxVec, FVec, dFVec)
+    assert legend_texts(shown[0].axes[0]) == [
+        "Data", "Best fit (y=mx+b)",
+        p._uncertainty_legend_text("m", fit.m, fit.dm),
+        p._uncertainty_legend_text("b", fit.b, fit.db),
+        p._chi2_legend_text(fit.chi2)]
 
 
 # --- The light grid, with and without residuals (2026-10-06) ---------------------
@@ -1213,3 +1228,164 @@ def test_autofit_positional_labels_are_read(shown, capsys):
 def test_correct_labels_still_draw(shown, label):
     p.plot_data(DxVec, FVec, dFVec, x_label=label)
     assert shown[0].axes[0].get_xlabel() == label
+
+
+
+# --- autofit 1.4.0: uncertainties, chi-squared by default, summary (2026-10-15) ---
+
+# Prelab06 cell 17 sample data
+P6_X = np.array([0.1, 0.16428571, 0.22857143, 0.29285714, 0.35714286, 0.42142857,
+                 0.48571429, 0.55, 0.61428571, 0.67857143, 0.74285714, 0.80714286,
+                 0.87142857, 0.93571429, 1.])
+P6_Y = np.array([0.33336864, 0.5414786, 0.82003978, 1.09858314, 1.27560974, 1.52025082,
+                 1.67681586, 2.03833678, 2.35943739, 2.36120224, 2.74941308, 2.83963194,
+                 2.9932707, 3.40978616, 3.44578725])
+P6_DY = np.array([0.01666843, 0.02707393, 0.04100199, 0.05492916, 0.06378049, 0.07601254,
+                  0.08384079, 0.10191684, 0.11797187, 0.11806011, 0.13747065, 0.1419816,
+                  0.14966353, 0.17048931, 0.17228936])
+
+
+def textbook_uncertainties(xv, dyv):
+    """Prelab06 section 6.2: dm = sqrt(S / Z), db = sqrt(Sxx / Z)."""
+    S, Sx, Sxx = np.sum(1 / dyv**2), np.sum(xv / dyv**2), np.sum(xv**2 / dyv**2)
+    Z = S * Sxx - Sx**2
+    return np.sqrt(S / Z), np.sqrt(Sxx / Z)
+
+
+@pytest.mark.parametrize("xv, yv, dyv", [
+    (P6_X, P6_Y, P6_DY),
+    (DxVec, FVec, dFVec),
+    (np.array([2000.0, 2001, 2002, 2003, 2004]), np.array([5.0, 5.2, 5.5, 5.6, 5.9]),
+     np.full(5, 0.1)),
+])
+def test_autofit_uncertainties_are_the_prelab06_formulas(shown, xv, yv, dyv):
+    fit = autofit_result(xv, yv, dyv)
+    dm, db = textbook_uncertainties(xv, dyv)
+    assert fit.dm == pytest.approx(dm, rel=1e-9)
+    assert fit.db == pytest.approx(db, rel=1e-9)
+    assert type(fit.dm) is float and type(fit.db) is float
+
+
+def test_prelab06_sample_data_summary(shown, capsys):
+    fit = autofit_result(P6_X, P6_Y, P6_DY)
+    assert capsys.readouterr().out.splitlines()[0] == (
+        f"{fit.name}: m = 3.631 ± 0.070, b = -0.030 ± 0.018, \u03c7\u00b2 = 0.618")
+
+
+@pytest.mark.parametrize("value, uncertainty, plain, legend", [
+    (2.08276, 0.03123, "m = 2.083 ± 0.031", r"$\mathrm{m} = 2.083 \pm 0.031$"),
+    (0.004742, 0.0104, "m = 0.005 ± 0.010", r"$\mathrm{m} = 0.005 \pm 0.010$"),
+    (2.0996, 0.0996, "m = 2.10 ± 0.10", r"$\mathrm{m} = 2.10 \pm 0.10$"),
+    (500.4, 23.7, "m = 500 ± 24", r"$\mathrm{m} = 500 \pm 24$"),
+    (2083.4, 31.2, "m = (2.083 ± 0.031)×10^3",
+     r"$\mathrm{m} = (2.083 \pm 0.031) \times 10^{3}$"),
+    (1.23e-5, 4.5e-7, "m = (1.230 ± 0.045)×10^-5",
+     r"$\mathrm{m} = (1.230 \pm 0.045) \times 10^{-5}$"),
+    (-0.0004, 0.0123, "m = 0.000 ± 0.012", r"$\mathrm{m} = 0.000 \pm 0.012$"),
+])
+def test_uncertainty_to_two_figures_and_value_to_match(value, uncertainty, plain, legend):
+    assert p._uncertainty_plain_text("m", value, uncertainty) == plain
+    assert p._uncertainty_legend_text("m", value, uncertainty) == legend
+
+
+def test_autofit_prints_the_summary_and_the_names(shown, capsys):
+    fit = autofit_result(DxVec, FVec, dFVec)
+    n = fit.name
+    assert capsys.readouterr().out == (
+        repr(fit) + "\n"
+        f"{n}.m, {n}.dm, {n}.b, {n}.db and {n}.chi2 hold these values at full precision.\n")
+
+
+def test_chi2_false_leaves_it_out_of_legend_and_summary(shown, capsys):
+    fit = autofit_result(DxVec, FVec, dFVec, chi2=False)
+    assert "χ" not in capsys.readouterr().out
+    assert not any("chi" in text for text in legend_texts(shown[0].axes[0]))
+    assert fit.chi2 == pytest.approx(
+        chi2_by_hand(DxVec, FVec, dFVec, fit.m, fit.b, len(DxVec) - 2), rel=1e-12)
+
+
+def test_autofit_gives_nothing_back(shown):
+    assert p.autofit(DxVec, FVec, dFVec) is None
+
+
+def test_autofit_names_a_variable_in_the_notebook(shown, capsys):
+    from IPython.core.interactiveshell import InteractiveShell
+    shell = InteractiveShell.instance()
+    shell.user_ns.update(p=p, DxVec=DxVec, FVec=FVec, dFVec=dFVec)
+    shell.run_cell("p.autofit(DxVec, FVec, dFVec)")
+    name = list(p._autofits.values())[-1].name
+    assert re.fullmatch(r"autofit\d+", name)
+    fit = shell.user_ns[name]
+    assert type(fit) is p.BestFit and fit.dm > 0 and fit.chi2 > 0
+    capsys.readouterr()
+    shell.run_cell(name)                     # a later cell shows it on its own
+    assert capsys.readouterr().out.count(f"{name}: m =") == 1
+
+
+def test_best_fit_with_uncertainties_survives_copy_and_pickle(shown):
+    import copy
+    import pickle
+    fit = autofit_result(DxVec, FVec, dFVec)
+    for clone in (copy.deepcopy(fit), pickle.loads(pickle.dumps(fit))):
+        assert (clone.dm, clone.db, clone.chi2) == (fit.dm, fit.db, fit.chi2)
+        assert repr(clone) == repr(fit)
+
+
+def test_failed_uncertainties_stop_autofit(shown, capsys, monkeypatch):
+    monkeypatch.setattr(p, "_line_fit_uncertainties", lambda *args: (float("nan"), 1.0))
+    with pytest.raises(p.Phys119Error):
+        p.autofit(DxVec, FVec, dFVec)
+    assert capsys.readouterr().err.startswith(
+        "ERROR: autofit() could not find a best-fit line for this data.")
+
+
+
+# --- autofit's automatic names (2026-10-15) --------------------------------------
+
+@pytest.fixture
+def notebook_cells(tmp_path, monkeypatch):
+    """Run autofit as cells of a saved notebook: each call gets the cell id
+    given, and the names are saved beside the notebook."""
+    monkeypatch.setenv("JPY_SESSION_NAME", str(tmp_path / "Prelab06.ipynb"))
+    monkeypatch.chdir(tmp_path)          # the kernel runs in the notebook's folder
+    monkeypatch.setattr(p, "_autofits", {})
+    cell = {"id": None}
+    monkeypatch.setattr(p, "_current_cell_id", lambda: cell["id"])
+
+    def run(cell_id, yv=FVec):
+        cell["id"] = cell_id
+        p.autofit(DxVec, yv, dFVec)
+        return list(p._autofits.values())[-1].name
+
+    run.saved = lambda: json.loads((tmp_path / ".Prelab06.manual_fits.json").read_text())["fits"]
+    run.restart = lambda: monkeypatch.setattr(p, "_autofits", {})
+    return run
+
+
+def test_autofit_names_count_up_by_cell(shown, notebook_cells):
+    assert notebook_cells("A") == "autofit1"
+    assert notebook_cells("B", 2 * FVec) == "autofit2"
+    assert notebook_cells("A") == "autofit1"            # re-running keeps the name
+    assert notebook_cells("C") == "autofit3"            # same call, another cell
+
+
+def test_autofit_names_survive_a_restart(shown, notebook_cells):
+    notebook_cells("A")
+    notebook_cells("B", 2 * FVec)
+    notebook_cells.restart()
+    assert notebook_cells("B", 2 * FVec) == "autofit2"   # out of order, after a restart
+    assert notebook_cells("A") == "autofit1"
+    assert {e["name"] for e in notebook_cells.saved().values()} == {"autofit1", "autofit2"}
+
+
+def test_autofit_and_manual_fit_names_share_the_file(shown, notebook_cells):
+    path = notebook_cells.saved
+    notebook_cells("A")
+    import pathlib
+    folder = pathlib.Path(os.environ["JPY_SESSION_NAME"]).parent
+    store = folder / ".Prelab06.manual_fits.json"
+    data = json.loads(store.read_text())
+    data["fits"]["cell M | call: manual_fit(x, y, dy)"] = {"name": "manual_fit1", "m": 2.0, "b": 0.0}
+    store.write_text(json.dumps(data))
+    assert notebook_cells("B", 2 * FVec) == "autofit2"
+    assert path()["cell M | call: manual_fit(x, y, dy)"]["name"] == "manual_fit1"
