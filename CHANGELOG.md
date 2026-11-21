@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.5.0
+## 1.5.0 (deployed to the course JupyterHub 2026-11-20)
 
 `autofit` can leave data points out of the fit. `manual_fit` is unchanged.
 
