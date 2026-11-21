@@ -1,14 +1,14 @@
 """Helper functions for Phys 119 lab notebooks.
 
-Version 1.3.0. The measurement helpers (t_score, mean, standard_deviation,
+The measurement helpers (t_score, mean, standard_deviation,
 standard_unc_of_mean) and the plotting functions (plot_data,
-plot_residuals, autofit, and the interactive manual_fit). Check
+plot_residuals, and the interactive autofit and manual_fit). Check
 `phys119_functions.__version__` to see which version is in use.
 
 Dropping this file beside a notebook is enough to try everything out: Python
 imports a module from the notebook's own folder before any installed one, so
 nothing needs installing. It needs numpy, matplotlib for the plotting
-functions, and anywidget for manual_fit.
+functions, and anywidget for autofit and manual_fit.
 
 Developed by Joss Ives for UBC Physics Labs, in collaboration with Claude
 (Anthropic), 2026. The whole module, including the student-facing error and
@@ -51,7 +51,7 @@ import matplotlib.pyplot as plt
 
 # Kept in step with the installed package, bumped together. A ".dev0"
 # suffix marks shared code that is ahead of the deployed package.
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 __all__ = [
     "t_score",
@@ -698,8 +698,8 @@ def _check_model_parameters(m, b, fn_name):
             if isinstance(value, BestFit):
                 hint = (
                     "\n"
-                    "\nautofit() gives back two numbers, m and b. Store them as\n"
-                    "m, b = autofit(...), or use fit.m and fit.b."
+                    f"\n{value.name} holds a whole best fit. Use {value.name}.m for its\n"
+                    f"slope and {value.name}.b for its intercept."
                 )
             elif isinstance(value, str) and _as_finite_number(value) is not None:
                 hint = (
@@ -1138,10 +1138,9 @@ def _draw_data_and_model(ax, x, y, dy, m, b, data_label, model_label,
     """Draw the data with error bars, the model line if m is given, and the
     legend on ax.
 
-    With parameter_labels (plot_data's legend) the legend reads: data, the
-    model, the parameter lines, then extra_label (the chi-squared). Without
-    them (autofit, and manual_fit's still picture) it reads: model, data,
-    then extra_label.
+    The legend reads: data, the model, the parameter lines (parameter_labels,
+    given whenever m is), then extra_label (the chi-squared). autofit draws
+    its own figure, in _autofit_draw, in the same order.
     """
     from matplotlib.lines import Line2D
     text_line = lambda label: Line2D([], [], linestyle="none", label=label)
@@ -1152,10 +1151,7 @@ def _draw_data_and_model(ax, x, y, dy, m, b, data_label, model_label,
         with np.errstate(all='ignore'):
             y_model = m * x_model + b
         model_artist, = ax.plot(x_model, y_model, 'r-', label=model_label)
-        if parameter_labels is not None:
-            handles = [data_artist, model_artist] + [text_line(t) for t in parameter_labels]
-        else:
-            handles = [model_artist, data_artist]
+        handles = [data_artist, model_artist] + [text_line(t) for t in parameter_labels or []]
     if extra_label is not None:
         handles.append(text_line(extra_label))
     ax.legend(handles=handles)
@@ -1174,79 +1170,71 @@ def _draw_residuals(ax, x, y, dy, m, b, x_label):
 
 
 def _plot_data(fn_name, x, y, dy, m, b, title, x_label, y_label, data_label,
-               model_label, residuals, num_model_points, figsize,
-               _suppress_checks=False, chi2=False, _dof=None,
-               _parameters_in_legend=True):
+               model_label, residuals, num_model_points, figsize, chi2=False):
     """The work behind plot_data and plot_residuals. fn_name is the function
     the student called, so that every message and the axis-label lookup use
     that name."""
-    # autofit has already checked the data and resolved the labels.
-    if not _suppress_checks:
-        # Everything that can stop the call is checked before the data,
-        # whose zero-dy check may show a warning.
-        if m is None:
-            if chi2:
-                _fail(fn_name,
-                    f"{fn_name}() needs a line to work out chi-squared for, but\n"
-                    "was given no slope m.\n"
-                    "\n"
-                    "Give m (and b if it is not 0), for example\n"
-                    f"{fn_name}(x, y, dy, m=2, b=0, chi2=True)"
-                )
-            if b is not None:
-                _fail(fn_name,
-                    f"{fn_name}() was given an intercept b but no slope m.\n"
-                    f"  got b = {_shown(b)}\n"
-                    "\n"
-                    "Give m as well to draw a line, for example\n"
-                    "plot_data(x, y, dy, m=2, b=0)"
-                )
-            if residuals:
-                _fail(fn_name,
-                    f"{fn_name}() needs a line to work out residuals from, but\n"
-                    "was given no slope m.\n"
-                    "\n"
-                    "Give m (and b if it is not 0), for example\n"
-                    + (f"{fn_name}(x, y, dy, m=2, b=0, residuals=True)"
-                       if fn_name == 'plot_data' else
-                       f"{fn_name}(x, y, dy, m=2, b=0)")
-                )
-        else:
-            # Every line is a 2-parameter model, y = mx + b; leaving b out
-            # sets it to 0 but still counts it as a parameter.
-            _dof = 2
-            if b is None:
-                b = 0
-            _check_model_parameters(m, b, fn_name)
-        _check_num_model_points(num_model_points, fn_name)
-        x, y, dy = _check_xy_data(x, y, dy, fn_name)
-        # plot_data's and plot_residuals' own legend wording, which students
-        # are shown how to replace with data_label and model_label.
-        if data_label is None:
-            data_label = "Data"
-        if model_label is None:
-            model_label = "Model (y=mx+b)"
-        title, x_label, y_label, data_label, model_label = _resolve_labels(
-            fn_name, title, x_label, y_label, data_label, model_label,
-        )
-        if chi2 and len(x) <= _dof:
+    # Everything that can stop the call is checked before the data,
+    # whose zero-dy check may show a warning.
+    if m is None:
+        if chi2:
             _fail(fn_name,
-                f"{fn_name}() needs at least 3 data points to work out chi-squared, got {len(x)}.\n"
+                f"{fn_name}() needs a line to work out chi-squared for, but\n"
+                "was given no slope m.\n"
                 "\n"
-                "Reduced chi-squared divides by the number of points minus 2 (the\n"
-                "slope and the intercept), which must be at least 1."
+                "Give m (and b if it is not 0), for example\n"
+                f"{fn_name}(x, y, dy, m=2, b=0, chi2=True)"
             )
+        if b is not None:
+            _fail(fn_name,
+                f"{fn_name}() was given an intercept b but no slope m.\n"
+                f"  got b = {_shown(b)}\n"
+                "\n"
+                "Give m as well to draw a line, for example\n"
+                "plot_data(x, y, dy, m=2, b=0)"
+            )
+        if residuals:
+            _fail(fn_name,
+                f"{fn_name}() needs a line to work out residuals from, but\n"
+                "was given no slope m.\n"
+                "\n"
+                "Give m (and b if it is not 0), for example\n"
+                + (f"{fn_name}(x, y, dy, m=2, b=0, residuals=True)"
+                   if fn_name == 'plot_data' else
+                   f"{fn_name}(x, y, dy, m=2, b=0)")
+            )
+    else:
+        # Every line is a 2-parameter model, y = mx + b; leaving b out
+        # sets it to 0 but still counts it as a parameter.
+        if b is None:
+            b = 0
+        _check_model_parameters(m, b, fn_name)
+    _check_num_model_points(num_model_points, fn_name)
+    x, y, dy = _check_xy_data(x, y, dy, fn_name)
+    # plot_data's and plot_residuals' own legend wording, which students
+    # are shown how to replace with data_label and model_label.
+    if data_label is None:
+        data_label = "Data"
+    if model_label is None:
+        model_label = "Model (y=mx+b)"
+    title, x_label, y_label, data_label, model_label = _resolve_labels(
+        fn_name, title, x_label, y_label, data_label, model_label,
+    )
+    if chi2 and len(x) <= 2:
+        _fail(fn_name,
+            f"{fn_name}() needs at least 3 data points to work out chi-squared, got {len(x)}.\n"
+            "\n"
+            "Reduced chi-squared divides by the number of points minus 2 (the\n"
+            "slope and the intercept), which must be at least 1."
+        )
 
     extra = None
     if chi2:
-        extra = _chi2_legend_text(_reduced_chi2(x, y, dy, m, b, len(x) - _dof))
+        extra = _chi2_legend_text(_reduced_chi2(x, y, dy, m, b, len(x) - 2))
 
-    # The legend lists the line's parameters, m and b. autofit passes its own
-    # lines, which add each value's uncertainty.
+    # The legend lists the line's parameters, m and b.
     parameters = None
-    if m is not None and isinstance(_parameters_in_legend, (list, tuple)):
-        parameters = list(_parameters_in_legend)
-    elif m is not None and _parameters_in_legend:
+    if m is not None:
         parameters = [_parameter_legend_text("m", m), _parameter_legend_text("b", b)]
 
     if not residuals:
@@ -1289,10 +1277,6 @@ def plot_data(
     num_model_points=100,
     figsize=None,
     chi2=False,
-    *,
-    _suppress_checks=False,
-    _dof=None,
-    _parameters_in_legend=True,
 ):
     """Plots data with error bars; adds a straight line y = m*x + b if you
     give a slope m, and the residuals underneath if you ask for them.
@@ -1352,7 +1336,7 @@ def plot_data(
     """
     _plot_data('plot_data', x, y, dy, m, b, title, x_label, y_label,
                data_label, model_label, residuals, num_model_points, figsize,
-               _suppress_checks, chi2, _dof, _parameters_in_legend)
+               chi2)
 
 
 # --- How labels were typed, read from the student's call --------------------
@@ -1515,257 +1499,11 @@ def _line_fit_uncertainties(x, dy):
     return float(dm), float(db)
 
 
-class BestFit(tuple):
-    """A best fit found by autofit, held in the notebook as autofit1,
-    autofit2, and so on.
-
-    .m and .b give the best-fit slope and intercept, .dm and .db their
-    uncertainties, and .chi2 the reduced chi-squared, all as plain floats:
-
-      autofit1.m, autofit1.dm      the slope and its uncertainty
-      autofit1.b, autofit1.db      the intercept and its uncertainty
-      autofit1.chi2                the reduced chi-squared
-
-    It also unpacks like a pair, so `m, b = autofit1` works. Shown on its
-    own, it is the one-line summary autofit prints.
-    """
-
-    def __new__(cls, m, b, chi2=None, show_chi2=False, dm=None, db=None, name="autofit"):
-        fit = super().__new__(cls, (float(m), float(b)))
-        fit._chi2 = None if chi2 is None else float(chi2)
-        fit._show_chi2 = bool(show_chi2)
-        fit._dm = None if dm is None else float(dm)
-        fit._db = None if db is None else float(db)
-        fit._name = str(name)
-        return fit
-
-    def __getnewargs__(self):
-        # copy and pickle rebuild a tuple subclass from this
-        return (self[0], self[1], self._chi2, self._show_chi2, self._dm, self._db,
-                self._name)
-
-    @property
-    def name(self):
-        """The variable that holds this fit in the notebook, such as autofit1."""
-        return self._name
-
-    @property
-    def m(self):
-        return self[0]
-
-    @property
-    def b(self):
-        return self[1]
-
-    @property
-    def dm(self):
-        """The uncertainty in the best-fit slope m."""
-        return self._dm
-
-    @property
-    def db(self):
-        """The uncertainty in the best-fit intercept b."""
-        return self._db
-
-    @property
-    def chi2(self):
-        """The reduced chi-squared of the best-fit line (divided by N - 2)."""
-        return self._chi2
-
-    def __repr__(self):
-        if self._dm is None or self._db is None:
-            text = f"{self._name}: m = {self.m:.4g}, b = {self.b:.4g}"
-        else:
-            text = (f"{self._name}: {_uncertainty_plain_text('m', self.m, self._dm)}, "
-                    f"{_uncertainty_plain_text('b', self.b, self._db)}")
-        if self._show_chi2 and self._chi2 is not None:
-            mantissa, exponent = _three_sig_figs(self._chi2)
-            text += f", χ² = {mantissa}" + ("" if exponent is None else f"×10^{exponent}")
-        return text
-
-
-# Every best fit made in this kernel, by what identifies it (its cell and its
-# call as typed), newest last. The names are also saved beside the notebook
-# with manual_fit's, so a fit keeps its name after a restart.
+# Every best fit made by autofit in this kernel, by what identifies it (its
+# cell and its call as typed), newest last. The names, and the points left
+# out, are also saved beside the notebook with manual_fit's, so a fit keeps
+# them after a restart.
 _autofits = {}
-
-
-def _autofit_key(frame, x, y, dy):
-    """What identifies a best fit: its notebook cell and its call as typed,
-    as for manual_fit. Without the call's text, the data stand in for it."""
-    cell = _current_cell_id()
-    where = f"cell {cell} | " if cell else ""
-    call = _typed_call('autofit', frame)
-    if call is not None:
-        try:
-            return where + "call: " + ast.unparse(call)
-        except Exception:
-            pass
-    return where + "autofit data: " + json.dumps([x.tolist(), y.tolist(), dy.tolist()])
-
-
-def _announce_autofit(fit, values):
-    """Print the fit's summary line and say which variable holds it.
-
-    Printed as ordinary output, so it is kept when the notebook is saved or
-    exported. values lists the attributes the sentence names.
-    """
-    print(repr(fit))
-    names = [f"{fit.name}.{value}" for value in values]
-    listed = ", ".join(names[:-1]) + " and " + names[-1]
-    pair = _notebook_display()
-    if pair is None:
-        print(f"{listed} hold these values at full precision.")
-        return
-    display, HTML = pair
-    code = lambda text: f"<code>{html.escape(text)}</code>"
-    listed_html = ", ".join(code(n) for n in names[:-1]) + " and " + code(names[-1])
-    display(HTML(
-        '<div style="font-family: sans-serif; font-size: 13px;">'
-        f"{listed_html} hold these values at full precision.</div>"
-    ))
-
-
-@_friendly_errors
-def autofit(
-    x, y, dy,
-    title=None,
-    x_label=None,
-    y_label=None,
-    data_label=None,
-    residuals=True,
-    num_model_points=100,
-    figsize=None,
-    chi2=True,
-):
-    """Finds the straight line y = m*x + b that best fits your data, and
-    plots it with the residuals underneath, as plot_data does with
-    residuals=True.
-
-    Arguments (positional order: x, y, dy):
-      x  -- the x values of your data
-      y  -- the y values of your data
-      dy -- the uncertainty in each y value, one for every data point,
-            none of them zero
-
-    Needs at least 3 data points and at least two different x values.
-
-    The best fit is the line with the smallest chi-squared. The legend gives
-    its slope m and intercept b, each with its uncertainty, and the reduced
-    chi-squared (divided by N - 2). Each uncertainty is given to 2
-    significant figures, and its value to the same decimal place.
-
-    You do not need to store anything. Each best fit is given a name:
-    autofit1 for the first, autofit2 for the next, and so on. The name is
-    printed under the graph with the values, as a line such as:
-
-      autofit1: m = 2.080 ± 0.056, b = 0.005 ± 0.015, χ² = 0.663
-
-    and in later cells it gives the values at full precision:
-
-      autofit1.m, autofit1.dm      the slope and its uncertainty
-      autofit1.b, autofit1.db      the intercept and its uncertainty
-      autofit1.chi2                the reduced chi-squared
-
-    Running the cell again, even after restarting the kernel, keeps the
-    same name.
-
-    Optional: title, x_label, y_label, data_label and figsize, all as for
-    plot_data; residuals=False to leave out the residuals graph; and
-    chi2=False to leave the reduced chi-squared out of the legend and the
-    printed line (autofit1.chi2 still holds it). Without x_label and
-    y_label, the axes show the variable names you typed for x and y.
-
-    Example:
-      autofit(
-          x=DxVec, y=FVec, dy=dFVec,
-          title="Hooke's law investigation",
-          x_label="Displacement of spring (m)",
-          y_label="Force (N)",
-      )
-
-    x, y and dy can each be a list or a numpy array.
-    """
-    _check_num_model_points(num_model_points, 'autofit')
-    x, y, dy = _check_xy_data(x, y, dy, 'autofit', zero_dy_is_error=True)
-
-    # Two points always give a line through both, with every residual zero,
-    # which says nothing about how well a line describes the data.
-    if len(x) < 3:
-        _fail('autofit',
-            f"autofit() needs at least 3 data points, got {len(x)}.\n"
-            "\n"
-            "A straight line can always be drawn exactly through two points, so\n"
-            "with fewer than three the residuals cannot show how well a line\n"
-            "describes your data."
-        )
-    if np.all(x == x[0]):
-        _fail('autofit',
-            "autofit() needs at least two different x values.\n"
-            f"  all {len(x)} x values = {float(x[0]):g}\n"
-            "\n"
-            "A slope cannot be found when every point has the same x. Check\n"
-            "that you passed the right array as x."
-        )
-
-    title, x_label, y_label, data_label, _ = _resolve_labels(
-        'autofit', title, x_label, y_label, data_label, None,
-    )
-
-    m_fit, b_fit = _weighted_line_fit(x, y, dy)
-    dm_fit, db_fit = _line_fit_uncertainties(x, dy)
-    if any(_as_finite_number(v) is None for v in (m_fit, b_fit, dm_fit, db_fit)):
-        _fail('autofit',
-            "autofit() could not find a best-fit line for this data.\n"
-            "\n"
-            "Check that x, y and dy hold the values you meant, then run this\n"
-            "cell again."
-        )
-
-    # The fit's name: kept from an earlier run of the same cell and call
-    # (in this kernel, or saved beside the notebook), or the next free one.
-    frame = _student_frame()
-    key = _autofit_key(frame, x, y, dy)
-    path = _manual_fit_store_path(frame)
-    stored = _manual_fit_store_read(path)
-    if key in _autofits:
-        name = _autofits[key].name
-    else:
-        names_in_use = {e.get("name") for e in stored.values() if isinstance(e, dict)}
-        names_in_use |= {fit.name for fit in _autofits.values()}
-        name = _manual_fit_name(key, stored, names_in_use, prefix="autofit")
-
-    plot_data(
-        x=x, y=y, dy=dy,
-        m=m_fit, b=b_fit,
-        title=title,
-        x_label=x_label,
-        y_label=y_label,
-        data_label=data_label,
-        model_label="Best fit (y=mx+b)",
-        residuals=residuals,
-        num_model_points=num_model_points,
-        figsize=figsize,
-        chi2=chi2,
-        _suppress_checks=True,
-        _dof=2,
-        _parameters_in_legend=[_uncertainty_legend_text("m", m_fit, dm_fit),
-                               _uncertainty_legend_text("b", b_fit, db_fit)],
-    )
-
-    fit = BestFit(m_fit, b_fit, _reduced_chi2(x, y, dy, m_fit, b_fit, len(x) - 2),
-                  show_chi2=chi2, dm=dm_fit, db=db_fit, name=name)
-    _autofits.pop(key, None)
-    _autofits[key] = fit                       # newest last
-    if path is not None and stored.get(key, {}).get("name") != name:
-        stored[key] = {"name": name}
-        _manual_fit_store_write(path, stored)
-
-    # The fit's name becomes a variable in the student's notebook.
-    if frame is not None:
-        frame.f_globals[name] = fit
-
-    _announce_autofit(fit, ["m", "dm", "b", "db", "chi2"])
 
 
 # ---------------------------------------------------------------------------
@@ -2654,3 +2392,997 @@ def manual_fit(x, y, dy, m_min=None, m_max=None, b_min=None, b_max=None,
         bundle["text/plain"] = (f"{name}: a line fitted by hand with manual_fit "
                                 f"(the plot appears in a running notebook)")
         display(bundle, raw=True)
+
+
+# ---------------------------------------------------------------------------
+# autofit: the best-fit line, with an interface for leaving points out of
+# the fit and putting them back.
+#
+# The figure is drawn by matplotlib in Python, as plot_data draws it (except
+# that, once points are left out, the residuals graph is scaled to the
+# points in the fit), and sent to the browser as a picture; the widget's JavaScript only shows
+# it, finds which point was clicked, and lists the points with checkboxes.
+# A change of selection goes to Python, which refits, redraws and sends the
+# new picture back. Clicks are occasional, unlike a slider's drag, so the
+# round trip costs little, and in return LaTeX in labels works as in
+# plot_data, and the still picture kept for exports is the same figure.
+#
+# Results are named autofit1, autofit2, ...
+# The points left out are remembered beside the notebook, with the fit's
+# name, so running the cell again (even after a restart) leaves them out
+# again.
+# ---------------------------------------------------------------------------
+
+_AUTOFIT_ESM = r"""
+const GREY = "#888888";
+
+function render({ model, el }) {
+    const n = model.get("n");
+    const points = model.get("points");           // [[x, y, dy] as text, ...]
+    const xValues = model.get("x_values");
+
+    const wrapper = document.createElement("div");
+    wrapper.style.fontFamily = "sans-serif";
+    wrapper.style.fontSize = "13px";
+    wrapper.style.maxWidth = "100%";
+    // Keys pressed in the widget (space on a checkbox, say) must not reach
+    // JupyterLab's notebook shortcuts.
+    for (const kind of ["keydown", "keyup", "keypress"]) {
+        wrapper.addEventListener(kind, (event) => event.stopPropagation());
+    }
+
+    // The figure, with a transparent canvas on top for the hover ring.
+    const stage = document.createElement("div");
+    stage.style.position = "relative";
+    stage.style.display = "inline-block";
+    stage.style.maxWidth = "100%";
+    stage.style.transition = "opacity 0.1s";
+    const img = document.createElement("img");
+    img.style.display = "block";
+    img.style.maxWidth = "100%";
+    img.alt = "Data with the best-fit line, and the residuals underneath";
+    const overlay = document.createElement("canvas");
+    overlay.style.position = "absolute";
+    overlay.style.left = "0";
+    overlay.style.top = "0";
+    overlay.style.pointerEvents = "none";
+    const tip = document.createElement("div");
+    tip.style.position = "absolute";
+    tip.style.pointerEvents = "none";
+    tip.style.background = "rgba(255, 255, 255, 0.95)";
+    tip.style.border = "1px solid #bbbbbb";
+    tip.style.padding = "2px 6px";
+    tip.style.fontSize = "12px";
+    tip.style.color = "#000000";
+    tip.style.whiteSpace = "nowrap";
+    tip.style.display = "none";
+    stage.append(img, overlay, tip);
+
+    const hint = document.createElement("div");
+    hint.style.margin = "4px 0";
+    hint.style.color = "var(--jp-ui-font-color1, #000000)";
+    hint.textContent = "Click a point in either graph, or untick it in the table, to leave " +
+                       "it out of the fit. Do the same again to put it back.";
+
+    const message = document.createElement("div");
+    message.style.margin = "4px 0";
+    message.style.padding = "2px 6px";
+    message.style.background = "var(--jp-warn-color3, #fff3cd)";
+    message.style.display = "none";
+    const say = (text) => {
+        message.textContent = text;
+        message.style.display = text ? "block" : "none";
+    };
+
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.textContent = "Put all points back in the fit";
+    reset.style.margin = "4px 0";
+    reset.addEventListener("click", () => send([]));
+
+    // ---- the selection --------------------------------------------------
+    const excluded = () => new Set(model.get("excluded"));
+
+    // Dimmed until Python sends the new figure; if that takes a while, say why.
+    let waiting = null;
+    function send(list) {
+        say("");
+        model.set("excluded", list.slice().sort((a, b) => a - b));
+        model.save_changes();
+        stage.style.opacity = "0.55";
+        clearTimeout(waiting);
+        waiting = setTimeout(() => say(
+            "Waiting for Python to redraw the fit. If another cell is running, this " +
+            "updates when it finishes. If the kernel was restarted, run this cell again."), 4000);
+    }
+
+    function toggle(k) {
+        const out = excluded();
+        if (out.has(k)) {
+            out.delete(k);
+        } else {
+            const keep = [];
+            for (let i = 1; i <= n; i++) if (!out.has(i) && i !== k) keep.push(i);
+            if (keep.length < 3) {
+                say(`Point ${k} cannot be left out: at least 3 points must stay in the fit.`);
+                refresh();
+                return;
+            }
+            if (new Set(keep.map((i) => xValues[i - 1])).size < 2) {
+                say(`Point ${k} cannot be left out: the points left in the fit need at ` +
+                    "least two different x values.");
+                refresh();
+                return;
+            }
+            out.add(k);
+        }
+        send([...out]);
+    }
+
+    // ---- the table of points ---------------------------------------------
+    const checks = [];
+    const rows = [];
+    const table = document.createElement("div");
+    table.style.maxHeight = "220px";
+    table.style.overflowY = "auto";
+    table.style.display = "inline-block";
+    table.style.border = "1px solid #cccccc";
+    table.style.margin = "4px 0";
+    const grid = document.createElement("table");
+    grid.style.borderCollapse = "collapse";
+    const head = document.createElement("tr");
+    for (const text of ["in fit", "point", "x", "y", "δy"]) {
+        const th = document.createElement("th");
+        th.textContent = text;
+        th.style.padding = "2px 10px";
+        th.style.textAlign = text === "in fit" ? "center" : "right";
+        th.style.position = "sticky";
+        th.style.top = "0";
+        th.style.background = "var(--jp-layout-color2, #eeeeee)";
+        head.append(th);
+    }
+    grid.append(head);
+    for (let k = 1; k <= n; k++) {
+        const tr = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.style.textAlign = "center";
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.setAttribute("aria-label", `point ${k} in the fit`);
+        check.addEventListener("change", () => toggle(k));
+        cell.append(check);
+        tr.append(cell);
+        for (const text of [String(k)].concat(points[k - 1])) {
+            const td = document.createElement("td");
+            td.textContent = text;
+            td.style.padding = "1px 10px";
+            td.style.textAlign = "right";
+            td.style.fontVariantNumeric = "tabular-nums";
+            tr.append(td);
+        }
+        tr.addEventListener("mouseenter", () => { hover = k; drawHover(); });
+        tr.addEventListener("mouseleave", () => { hover = null; drawHover(); });
+        checks.push(check);
+        rows.push(tr);
+        grid.append(tr);
+    }
+    table.append(grid);
+
+    // ---- hover and click on the figure --------------------------------------
+    let hover = null;                  // the point under the mouse or table row
+    const scale = () => img.clientWidth / model.get("positions").width;
+
+    function nearest(event) {
+        const rect = img.getBoundingClientRect();
+        const s = scale();
+        const X = (event.clientX - rect.left) / s, Y = (event.clientY - rect.top) / s;
+        const pos = model.get("positions");
+        let best = null, bestDistance = 10 / s;       // within 10 screen pixels
+        for (const panel of [pos.main, pos.resid]) {
+            panel.forEach((place, i) => {
+                if (!place) return;                   // not drawn in this graph
+                const [px, py] = place;
+                const d = Math.hypot(px - X, py - Y);
+                if (d < bestDistance) { bestDistance = d; best = i + 1; }
+            });
+        }
+        return best;
+    }
+
+    function drawHover() {
+        const s = scale();
+        const ratio = window.devicePixelRatio || 1;
+        overlay.width = Math.round(img.clientWidth * ratio);
+        overlay.height = Math.round(img.clientHeight * ratio);
+        overlay.style.width = img.clientWidth + "px";
+        overlay.style.height = img.clientHeight + "px";
+        const ctx = overlay.getContext("2d");
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        ctx.clearRect(0, 0, img.clientWidth, img.clientHeight);
+        rows.forEach((tr, i) => {
+            tr.style.background = hover === i + 1 ? "rgba(255, 200, 0, 0.25)" : "";
+        });
+        if (hover === null || !model.get("positions").main.length) return;
+        const pos = model.get("positions");
+        ctx.strokeStyle = "#ff9900";
+        ctx.lineWidth = 2;
+        for (const panel of [pos.main, pos.resid]) {
+            if (!panel[hover - 1]) continue;
+            const [px, py] = panel[hover - 1];
+            ctx.beginPath();
+            ctx.arc(px * s, py * s, 8, 0, 2 * Math.PI);
+            ctx.stroke();
+        }
+    }
+
+    function showTip(k, event) {
+        if (k === null) { tip.style.display = "none"; return; }
+        const [x, y, dy] = points[k - 1];
+        const state = excluded().has(k) ? "left out of the fit" : "in the fit";
+        const action = excluded().has(k) ? " (click to put it back)" : " (click to leave it out)";
+        tip.textContent = `point ${k}: x = ${x}, y = ${y} ± ${dy}, ${state}${action}`;
+        const rect = stage.getBoundingClientRect();
+        tip.style.display = "block";
+        const left = event.clientX - rect.left + 14;
+        tip.style.left = Math.min(left, rect.width - tip.offsetWidth - 2) + "px";
+        tip.style.top = (event.clientY - rect.top + 14) + "px";
+    }
+
+    let lastMove = null;               // so the tip can be rewritten after a click
+    img.addEventListener("mousemove", (event) => {
+        lastMove = event;
+        const k = nearest(event);
+        img.style.cursor = k !== null ? "pointer" : "default";
+        if (k !== hover) { hover = k; drawHover(); }
+        showTip(k, event);
+    });
+    img.addEventListener("mouseleave", () => {
+        lastMove = null; hover = null; drawHover(); tip.style.display = "none";
+    });
+    img.addEventListener("click", (event) => {
+        const k = nearest(event);
+        if (k !== null) toggle(k);
+    });
+
+    // ---- drawing what Python sent --------------------------------------------
+    function refresh() {
+        const out = excluded();
+        checks.forEach((check, i) => { check.checked = !out.has(i + 1); });
+        rows.forEach((tr, i) => { tr.style.color = out.has(i + 1) ? GREY : ""; });
+        reset.disabled = out.size === 0;
+    }
+
+    function update() {
+        clearTimeout(waiting);
+        img.src = "data:image/png;base64," + model.get("png");
+        img.style.width = model.get("positions").width + "px";
+        stage.style.opacity = "1";
+        say(model.get("message"));
+        refresh();
+        // The point under the mouse may now be in or out, or (an arrow in
+        // the residuals graph) somewhere else: say so without waiting for a move.
+        if (lastMove) {
+            hover = nearest(lastMove);
+            showTip(hover, lastMove);
+        }
+    }
+    img.addEventListener("load", drawHover);
+    const onUpdate = () => update();
+    model.on("change:revision", onUpdate);
+
+    const controls = document.createElement("div");
+    controls.append(hint, message);
+    controls.append(table);
+    const resetRow = document.createElement("div");
+    resetRow.append(reset);
+    wrapper.append(stage, controls, resetRow);
+    el.append(wrapper);
+    update();
+
+    return () => {
+        clearTimeout(waiting);
+        model.off("change:revision", onUpdate);
+    };
+}
+
+export default { render };
+"""
+
+_autofit_widget_class = None
+
+
+def _autofit_widget():
+    """The widget class, built on first use so anywidget is only needed then."""
+    global _autofit_widget_class
+    if _autofit_widget_class is None:
+        import anywidget
+        import traitlets
+
+        class AutofitWidget(anywidget.AnyWidget):
+            _esm = _AUTOFIT_ESM
+            n = traitlets.Int(0).tag(sync=True)
+            points = traitlets.List([]).tag(sync=True)
+            x_values = traitlets.List([]).tag(sync=True)
+            excluded = traitlets.List([]).tag(sync=True)
+            png = traitlets.Unicode("").tag(sync=True)
+            positions = traitlets.Dict({"width": 1, "main": [], "resid": []}).tag(sync=True)
+            revision = traitlets.Int(0).tag(sync=True)
+            message = traitlets.Unicode("").tag(sync=True)
+
+        _autofit_widget_class = AutofitWidget
+    return _autofit_widget_class
+
+
+class BestFit:
+    """A best fit found by autofit, held in the notebook as autofit1,
+    autofit2, and so on.
+
+    .m and .b give the best-fit slope and intercept, .dm and .db their
+    uncertainties, and .chi2 the reduced chi-squared, all worked out from
+    the points in the fit, as plain floats. They follow your choices: leave
+    a point out and they change.
+
+      autofit1.m, autofit1.dm      the slope and its uncertainty
+      autofit1.b, autofit1.db      the intercept and its uncertainty
+      autofit1.chi2                the reduced chi-squared
+      autofit1.excluded            the points left out of the fit, by number
+                                   (the first point is 1)
+
+    It also unpacks like a pair, so `m, b = autofit1` works. Shown on its
+    own, it is the one-line summary autofit prints.
+    """
+
+    __slots__ = ("name", "_values", "_show_chi2", "_widget")
+
+    def __init__(self, name, values, show_chi2):
+        self.name = name
+        self._values = values
+        self._show_chi2 = show_chi2
+        self._widget = None
+
+    @property
+    def m(self):
+        """The best-fit slope."""
+        return self._values["m"]
+
+    @property
+    def dm(self):
+        """The uncertainty in the best-fit slope m."""
+        return self._values["dm"]
+
+    @property
+    def b(self):
+        """The best-fit intercept."""
+        return self._values["b"]
+
+    @property
+    def db(self):
+        """The uncertainty in the best-fit intercept b."""
+        return self._values["db"]
+
+    @property
+    def chi2(self):
+        """The reduced chi-squared of the best-fit line, over the points in
+        the fit (divided by the number of them minus 2)."""
+        return self._values["chi2"]
+
+    @property
+    def excluded(self):
+        """The points left out of the fit, numbered from 1 for the first."""
+        return list(self._values["excluded"])
+
+    def __reduce__(self):
+        # copy and pickle keep the values as they are now, without the widget
+        return (BestFit, (self.name, dict(self._values), self._show_chi2))
+
+    def __iter__(self):
+        return iter((self.m, self.b))
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, index):
+        return (self.m, self.b)[index]
+
+    def __repr__(self):
+        return _autofit_line(self)
+
+
+def _autofit_fit(x, y, dy, excluded):
+    """The best fit to the points not in excluded (numbers from 1)."""
+    keep = np.ones(len(x), dtype=bool)
+    for k in excluded:
+        keep[k - 1] = False
+    m, b = _weighted_line_fit(x[keep], y[keep], dy[keep])
+    dm, db = _line_fit_uncertainties(x[keep], dy[keep])
+    chi2 = _reduced_chi2(x[keep], y[keep], dy[keep], m, b, int(np.sum(keep)) - 2)
+    return {"m": m, "b": b, "dm": dm, "db": db, "chi2": chi2,
+            "excluded": list(excluded), "used": int(np.sum(keep)), "n": len(x)}
+
+
+_AUTOFIT_CSS_DPI = 100     # the picture's intended size: 100 px per inch
+_AUTOFIT_SHARP = 2         # drawn at twice that, for high-resolution screens
+
+
+def _autofit_draw(x, y, dy, values, labels, show_chi2, note=False):
+    """Draws autofit's figure: plot_data's, with the points left out drawn
+    hollow and grey.
+
+    The residuals graph is scaled to the points in the fit. A point left
+    out beyond it is shown as an arrow at the edge, with its number, which
+    can be clicked; with note=True, a note at the top also counts these
+    points.
+
+    Returns (fig, ax_top, ax_bot, resid_shown), where resid_shown is where
+    each residual is drawn (an off-scale point's arrow, for one beyond the
+    scale). Drawn on a bare matplotlib Figure with the Agg canvas, never
+    through pyplot, so no figure is registered, shown or left open.
+    """
+    from matplotlib.figure import Figure
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.lines import Line2D
+
+    grey = "#888888"
+    keep = np.ones(len(x), dtype=bool)
+    for k in values["excluded"]:
+        keep[k - 1] = False
+    out = ~keep
+    m, b = values["m"], values["b"]
+    with np.errstate(all='ignore'):
+        resid = y - (m * x + b)
+
+    # plot_data's 7 x 6 inch figure, with 0.4 inch more on the left, so that a
+    # crop with a fixed left edge (in _autofit_figure) stays inside the
+    # figure. The graphs are the same size as plot_data's.
+    W, H = 7.4, 6
+    fig = Figure(figsize=(W, H), dpi=_AUTOFIT_SHARP * _AUTOFIT_CSS_DPI)
+    canvas = FigureCanvasAgg(fig)
+    ax_top, ax_bot = fig.subplots(
+        nrows=2, ncols=1, sharex=True,
+        gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.08,
+                     'left': (0.125 * 7 + 0.4) / W, 'right': (0.9 * 7 + 0.4) / W},
+    )
+    text_line = lambda label: Line2D([], [], linestyle="none", label=label)
+
+    numbers = []                     # the left-out points' number labels
+    data_artist = ax_top.errorbar(x[keep], y[keep], dy[keep], fmt='bo', markersize=3,
+                                  label=labels["data_label"])
+    handles = [data_artist]
+    if np.any(out):
+        handles.append(ax_top.errorbar(
+            x[out], y[out], dy[out], fmt='o', markersize=5, mfc='none', mec=grey,
+            ecolor=grey, label="Excluded from fit"))
+        for k in values["excluded"]:
+            numbers.append(ax_top.annotate(str(k), (x[k - 1], y[k - 1]), xytext=(6, 4),
+                                           textcoords='offset points', color=grey, fontsize=9))
+    # The line across all the data, so a point left out can be seen against it.
+    x_model = np.linspace(np.min(x), np.max(x), 100)
+    with np.errstate(all='ignore'):
+        model_artist, = ax_top.plot(x_model, m * x_model + b, 'r-', label="Best fit (y=mx+b)")
+    handles += [model_artist,
+                text_line(_uncertainty_legend_text("m", m, values["dm"])),
+                text_line(_uncertainty_legend_text("b", b, values["db"]))]
+    if show_chi2:
+        handles.append(text_line(_chi2_legend_text(values["chi2"])))
+    ax_top.legend(handles=handles)
+    ax_top.set_title(labels["title"])
+    ax_top.set_ylabel(labels["y_label"])
+    ax_top.grid(True, alpha=0.3)
+
+    # The residuals graph is scaled to the points in the fit (error bars and
+    # zero included), so that a point left out far from the line does not
+    # squash the others. A point left out that falls outside is marked with
+    # an arrow at the edge and, with note=True, counted in a note at
+    # the top.
+    lo = min(0.0, float(np.min(resid[keep] - dy[keep])))
+    hi = max(0.0, float(np.max(resid[keep] + dy[keep])))
+    span = hi - lo if hi > lo else 1.0
+    above = out & (resid > hi + 0.05 * span)
+    below = out & (resid < lo - 0.05 * span)
+    inside = out & ~above & ~below
+    note = bool(note) and bool(np.any(above | below))
+    # Strips beyond the data, so that nothing covers a point: from the data
+    # outwards, the note's strip (top only), then the arrows' strip at the
+    # very edge, so an arrow never sits where a residual could be.
+    lane = 0.18 * span                     # an arrow is about 10 px tall
+    note_lane = 0.3 * span if note else 0.0
+    y_top = hi + note_lane + (lane if np.any(above) else 0.05 * span)
+    y_bottom = lo - (lane if np.any(below) else 0.05 * span)
+    resid_shown = resid.copy()             # where each point is drawn, for clicking
+
+    ax_bot.errorbar(x[keep], resid[keep], dy[keep], fmt='bo', markersize=3)
+    if np.any(inside):
+        ax_bot.errorbar(x[inside], resid[inside], dy[inside], fmt='o', markersize=5,
+                        mfc='none', mec=grey, ecolor=grey)
+    # A small arrow pointing off the graph, so it does not look like a
+    # data point, with the point's number beside it. Its middle is the
+    # place that is clicked.
+    for side, sign, edge in ((above, 1, y_top - 0.5 * lane),
+                             (below, -1, y_bottom + 0.5 * lane)):
+        for i in np.flatnonzero(side):
+            ax_bot.annotate("", xy=(x[i], edge + sign * 0.4 * lane),
+                            xytext=(x[i], edge - sign * 0.4 * lane),
+                            arrowprops={"arrowstyle": "-|>", "color": grey, "lw": 1.3,
+                                        "mutation_scale": 9, "shrinkA": 0, "shrinkB": 0})
+            numbers.append(ax_bot.annotate(str(i + 1), (x[i], edge), xytext=(5, 0),
+                                           textcoords='offset points', color=grey,
+                                           fontsize=9, va='center'))
+            resid_shown[i] = edge
+    if note:
+        # A count, not the points' numbers, so it stays short however many
+        # points are left out: "Off-scale points: 3 above, 1 below".
+        counts = [f"{int(np.sum(side))} {where}"
+                  for side, where in ((above, "above"), (below, "below")) if np.any(side)]
+        if counts:
+            # In the middle of its own strip, at the right.
+            from matplotlib.transforms import blended_transform_factory
+            ax_bot.text(0.99, hi + 0.5 * note_lane, "Off-scale points: " + ", ".join(counts),
+                        transform=blended_transform_factory(ax_bot.transAxes, ax_bot.transData),
+                        ha='right', va='center', color=grey,
+                        fontsize=9, bbox={"facecolor": "white", "edgecolor": "#cccccc",
+                                          "alpha": 0.9, "boxstyle": "round,pad=0.3"})
+    ax_bot.hlines(y=0, xmin=np.min(x), xmax=np.max(x), color='k')
+    if np.any(out):              # with every point in, the same scale as plot_data's
+        ax_bot.set_ylim(y_bottom, y_top)
+    ax_bot.set_xlabel(labels["x_label"])
+    ax_bot.set_ylabel(RESIDUAL_LABEL, labelpad=10)
+    ax_bot.grid(True, alpha=0.3)
+
+    # Where points left out are close together, their numbers would run
+    # into each other and into the next point ("1011121314"). Going left to
+    # right, a number that would touch another number already shown, or
+    # another left-out point's marker or arrow, is left off. The point is
+    # still drawn (and its arrow can still be clicked), and the hover tip and
+    # the table name it.
+    if numbers:
+        from matplotlib.transforms import Bbox
+        for ax in (ax_top, ax_bot):
+            ax.get_xlim(), ax.get_ylim()          # settle the axis ranges first
+        renderer = canvas.get_renderer()
+        pt = fig.dpi / 72                         # pixels per point
+        def marker_box(ax, px, py, half_width, half_height):
+            X, Y = ax.transData.transform((px, py))
+            return Bbox.from_extents(X - half_width, Y - half_height,
+                                     X + half_width, Y + half_height)
+        markers = []                              # (label, the box its own point fills)
+        for label in numbers:
+            k = int(label.get_text()) - 1
+            if label.axes is ax_top:
+                markers.append((label, marker_box(ax_top, x[k], y[k], 3 * pt, 3 * pt)))
+            else:
+                bottom, top = ax_bot.transData.transform(
+                    [(x[k], label.xy[1] - 0.4 * lane), (x[k], label.xy[1] + 0.4 * lane)])[:, 1]
+                markers.append((label, marker_box(ax_bot, x[k], label.xy[1], 4 * pt,
+                                                  (top - bottom) / 2)))
+        shown = []
+        for label, own in sorted(markers, key=lambda pair: pair[0].xy[0]):
+            box = label.get_window_extent(renderer).padded(pt)
+            others = [m for other, m in markers if other is not label and other.axes is label.axes]
+            if any(box.overlaps(b) for b in shown + others):
+                label.set_visible(False)
+            else:
+                shown.append(box)
+    return fig, ax_top, ax_bot, resid_shown
+
+
+def _autofit_figure(x, y, dy, values, labels, show_chi2, note=False,
+                    left_edge=None):
+    """autofit's figure (drawn by _autofit_draw), as a picture.
+
+    left_edge (inches) is the furthest left the picture has been cropped
+    before for this fit: the crop never starts to the right of it, so the
+    graphs do not jump sideways when the tick labels narrow. The crop's
+    left edge is returned in positions["left_edge"].
+
+    Returns (PNG bytes, positions), where positions gives each point's place
+    in the picture, in the picture's own pixels at its intended size, for
+    the widget to find which point was clicked: {"width": ..., "height": ...,
+    "main": [[X, Y], ...], "resid": [[X, Y], ...]}.
+    """
+    import io
+    fig, ax_top, ax_bot, resid_shown = _autofit_draw(x, y, dy, values, labels,
+                                                     show_chi2, note)
+    canvas = fig.canvas
+    W, H = fig.get_size_inches()
+    sharp = _AUTOFIT_SHARP
+
+    # Cropped to what is drawn, as plot_data's figures are in a notebook, so
+    # long labels are never cut; the same crop decides the points' places.
+    # Drawn once, and the drawing cropped, unless something reaches past the
+    # figure's edge (a very long title, say); savefig then draws it again,
+    # wide enough to hold everything.
+    canvas.draw()
+    dpi = fig.dpi
+    crop = fig.get_tightbbox(canvas.get_renderer()).padded(0.1)     # inches
+    # A fixed left edge, wide enough for most tick labels, and never right of
+    # where this fit's picture started before: leaving a point out narrows
+    # the residuals' tick labels, and the picture must not shift under the
+    # mouse.
+    from matplotlib.transforms import Bbox
+    x0 = min(crop.x0, 0.1, left_edge if left_edge is not None else 0.1)
+    crop = Bbox.from_extents(x0, crop.y0, crop.x1, crop.y1)
+    buffer = io.BytesIO()
+    if crop.x0 >= 0 and crop.y0 >= 0 and crop.x1 <= W and crop.y1 <= H:
+        whole = np.asarray(canvas.buffer_rgba())
+        height = whole.shape[0]
+        left, right = int(np.floor(crop.x0 * dpi)), int(np.ceil(crop.x1 * dpi))
+        top, bottom = int(np.floor(height - crop.y1 * dpi)), int(np.ceil(height - crop.y0 * dpi))
+        top, left = max(top, 0), max(left, 0)
+        from PIL import Image          # installed with matplotlib, which needs it
+        Image.fromarray(np.ascontiguousarray(whole[top:bottom, left:right])).save(buffer, "png")
+    else:
+        fig.savefig(buffer, format="png", dpi=dpi, bbox_inches=crop)
+        left, top = crop.x0 * dpi, (H - crop.y1) * dpi
+        right, bottom = crop.x1 * dpi, (H - crop.y0) * dpi
+
+    def places(ax, ys):
+        shown = ax.transData.transform(np.column_stack([x, ys]))     # pixels, from bottom left
+        # None for a point not drawn in this graph.
+        return [None if not np.isfinite(py) else
+                [round((float(px) - left) / sharp, 2),
+                 round((H * dpi - float(py) - top) / sharp, 2)]
+                for px, py in shown]
+
+    positions = {
+        "width": round((right - left) / sharp, 2),
+        "height": round((bottom - top) / sharp, 2),
+        "main": places(ax_top, y),
+        "resid": places(ax_bot, resid_shown),
+        "left_edge": float(crop.x0),
+    }
+    return buffer.getvalue(), positions
+
+
+def _autofit_line(fit):
+    """The fit's one-line summary: 'autofit1: m = 2.080 ± 0.056, ...'."""
+    values = fit._values
+    line = (f"{fit.name}: {_uncertainty_plain_text('m', values['m'], values['dm'])}, "
+            f"{_uncertainty_plain_text('b', values['b'], values['db'])}")
+    if fit._show_chi2:
+        mantissa, exponent = _three_sig_figs(values["chi2"])
+        line += f", χ² = {mantissa}" + ("" if exponent is None else f"×10^{exponent}")
+    return line
+
+
+def _autofit_summary(fit, pick=True):
+    """The printed summary of a fit, as (plain text, HTML): two lines, the
+    values, then which names hold them. Which points are left
+    out is not repeated here: the table and the graph show it. Without
+    pick, .excluded is not listed, since every point is in the fit.
+    """
+    line = _autofit_line(fit)
+    rich =('<div style="font-family: sans-serif; font-size: 13px;">'
+            f"<pre style='margin: 0;'>{html.escape(line)}</pre>")
+    names = [f"{fit.name}.{v}" for v in ("m", "dm", "b", "db", "chi2", "excluded")
+             if pick or v != "excluded"]
+    plain = (line + "\n" + ", ".join(names[:-1]) + " and " + names[-1]
+             + " hold these values at full precision.")
+    code = lambda text: f"<code>{html.escape(text)}</code>"
+    listed_html = ", ".join(code(n) for n in names[:-1]) + " and " + code(names[-1])
+    rich += (f"<div style='margin-top: 4px;'>{listed_html} hold these values at full "
+             "precision.</div></div>")
+    return plain, rich
+
+
+def _autofit_problem(x, excluded):
+    """Why this choice of points cannot be fitted, or None."""
+    keep = [i for i in range(len(x)) if i + 1 not in set(excluded)]
+    if len(keep) < 3:
+        return ("at least 3 points must stay in the fit, so that the residuals can "
+                "show how well a line describes the data")
+    if len({float(x[i]) for i in keep}) < 2:
+        return "the points left in the fit need at least two different x values"
+    return None
+
+
+# Keywords that only change how a fit is shown.
+_AUTOFIT_DISPLAY_KEYWORDS = ("note", "pick")
+
+
+def _autofit_key(frame, x, y, dy):
+    """What identifies a fit: its notebook cell and its call as typed, as for
+    manual_fit, but without the keywords that only change how it is shown
+    (note, pick), so that changing them keeps the fit's name and the points
+    left out. Without the call's text, the data stand in for it."""
+    cell = _current_cell_id()
+    where = f"cell {cell} | " if cell else ""
+    call = _typed_call('autofit', frame)
+    if call is not None:
+        try:
+            call = ast.Call(func=call.func, args=call.args,
+                            keywords=[k for k in call.keywords
+                                      if k.arg not in _AUTOFIT_DISPLAY_KEYWORDS])
+            return where + "call: " + ast.unparse(call)
+        except Exception:
+            pass
+    return where + "autofit data: " + _autofit_data_text(x, y, dy)
+
+
+def _autofit_data_text(x, y, dy):
+    """The data as text, saved with the points left out: points are left out
+    by number, so the choice is only used again on the same data. Otherwise
+    an edit such as a reading added at the start would silently leave out a
+    different point."""
+    return json.dumps([x.tolist(), y.tolist(), dy.tolist()])
+
+
+@_friendly_errors
+def autofit(
+    x, y, dy,
+    title=None,
+    x_label=None,
+    y_label=None,
+    data_label=None,
+    chi2=True,
+    note=False,
+    pick=False,
+):
+    """Finds the straight line y = m*x + b that best fits your data, and
+    plots it with the residuals underneath, as plot_data does with
+    residuals=True. With pick=True, you can leave data points out of the
+    fit and put them back.
+
+    Arguments (positional order: x, y, dy):
+      x  -- the x values of your data
+      y  -- the y values of your data
+      dy -- the uncertainty in each y value, one for every data point,
+            none of them zero
+
+    Needs at least 3 data points and at least two different x values.
+
+    The best fit is the line with the smallest chi-squared. The legend gives
+    its slope m and intercept b, each with its uncertainty, and the reduced
+    chi-squared (divided by N - 2). Each uncertainty is given to 2
+    significant figures, and its value to the same decimal place.
+
+    You do not need to store anything. Each best fit is given a name:
+    autofit1 for the first, autofit2 for the next, and so on. The name is
+    printed under the graph with the values, as a line such as:
+
+      autofit1: m = 2.080 ± 0.056, b = 0.005 ± 0.015, χ² = 0.663
+
+    and in later cells it gives the values at full precision:
+
+      autofit1.m, autofit1.dm      the slope and its uncertainty
+      autofit1.b, autofit1.db      the intercept and its uncertainty
+      autofit1.chi2                the reduced chi-squared
+      autofit1.excluded            the points left out, by number (with
+                                   pick=True)
+
+    Leaving points out (with pick=True): click a point (in either graph) or
+    untick it in the table under the graph; do the same again to put it
+    back. The fit, the
+    legend, the printed line and autofit1's values then use only the points
+    left in. At least 3 points, with two different x values, must stay in
+    the fit. Points are numbered from 1 for the first.
+
+    Points left out are still shown, hollow and grey, with their number, so
+    you can see how far they are from the line. The residuals graph is then
+    scaled to the points in the fit, so that a point far off the line does
+    not squash the others. A point left out that falls outside it is shown
+    as a small arrow at the edge, with its number; click the arrow to put
+    the point back. Where points left out are crowded together, some
+    numbers are left off so they don't overlap; hover over a point or an
+    arrow to see its number.
+
+    Running the cell again, even after restarting the kernel, keeps the
+    same name and leaves the same points out. If you have changed x, y or
+    dy since, every point is back in the fit, and you choose again.
+    Without pick=True, every point is in the fit; the points you chose are
+    kept, and left out again when you add pick=True back.
+
+    Optional:
+      title, x_label, y_label, data_label -- as for plot_data. Without
+                   x_label and y_label, the axes show the variable names
+                   you typed for x and y.
+      chi2      -- False to leave the reduced chi-squared out of the legend
+                   and the printed line (autofit1.chi2 still holds it)
+      note      -- True to add a note at the top of the residuals graph
+                   saying how many points left out are off its scale,
+                   e.g. "Off-scale points: 3 above, 1 below"
+      pick      -- True to be able to leave points out of the fit and put
+                   them back, by clicking them or with the table under the
+                   graph
+
+    Example:
+      autofit(
+          x=DxVec, y=FVec, dy=dFVec,
+          title="Hooke's law investigation",
+          x_label="Displacement of spring (m)",
+          y_label="Force (N)",
+      )
+
+    x, y and dy can each be a list or a numpy array.
+    """
+    fn_name = 'autofit'
+    for keyword, value in (("note", note), ("pick", pick)):
+        if not isinstance(value, (bool, np.bool_)):
+            _fail(fn_name,
+                f"{fn_name}() needs {keyword} to be True or False.\n"
+                f"  got {keyword} = {_shown(value)}"
+            )
+    pick = bool(pick)
+    x, y, dy = _check_xy_data(x, y, dy, fn_name, zero_dy_is_error=True)
+    if len(x) < 3:
+        _fail(fn_name,
+            f"{fn_name}() needs at least 3 data points, got {len(x)}.\n"
+            "\n"
+            "A straight line can always be drawn exactly through two points, so\n"
+            "with fewer than three the residuals cannot show how well a line\n"
+            "describes your data."
+        )
+    if np.all(x == x[0]):
+        _fail(fn_name,
+            f"{fn_name}() needs at least two different x values.\n"
+            f"  all {len(x)} x values = {float(x[0]):g}\n"
+            "\n"
+            "A slope cannot be found when every point has the same x. Check\n"
+            "that you passed the right array as x."
+        )
+    title, x_label, y_label, data_label, _ = _resolve_labels(
+        fn_name, title, x_label, y_label, data_label, None,
+    )
+    labels = {"title": title, "x_label": x_label, "y_label": y_label,
+              "data_label": data_label}
+
+    try:
+        widget_class = _autofit_widget() if pick else None
+    except ImportError:
+        _fail(fn_name,
+            f"{fn_name}() needs the anywidget package, which is not\n"
+            "installed in this Python environment.\n"
+            "\n"
+            "This is not a mistake in your code. Let your instructor or TA know."
+        )
+
+    # The fit's name, and the points left out: kept from an earlier run of
+    # the same cell and call, in this kernel or saved beside the notebook.
+    # The points left out are kept only if the data are unchanged; the name
+    # is kept either way.
+    frame = _student_frame()
+    key = _autofit_key(frame, x, y, dy)
+    data_text = _autofit_data_text(x, y, dy)
+    path = _manual_fit_store_path(frame)
+    stored = _manual_fit_store_read(path)
+    if key in _autofits:
+        name = _autofits[key].name
+    else:
+        names_in_use = {e.get("name") for e in stored.values() if isinstance(e, dict)}
+        names_in_use |= {fit.name for fit in _autofits.values()}
+        name = _manual_fit_name(key, stored, names_in_use, prefix="autofit")
+    excluded = []
+    entry = stored.get(key)
+    if pick and isinstance(entry, dict) and entry.get("data") == data_text:
+        saved = entry.get("excluded")
+        if (isinstance(saved, list)
+                and all(isinstance(k, int) and not isinstance(k, bool) and 1 <= k <= len(x)
+                        for k in saved)
+                and _autofit_problem(x, saved) is None):
+            excluded = sorted(set(saved))
+
+    values = _autofit_fit(x, y, dy, excluded)
+    if any(_as_finite_number(values[v]) is None for v in ("m", "b", "dm", "db")):
+        _fail(fn_name,
+            f"{fn_name}() could not find a best-fit line for this data.\n"
+            "\n"
+            "Check that x, y and dy hold the values you meant, then run this\n"
+            "cell again."
+        )
+    png, positions = _autofit_figure(x, y, dy, values, labels, chi2, note)
+
+    if not pick:
+        # Every point in the fit, and just the picture: no table, no
+        # clicking. A choice saved with pick=True is kept as it is, for when
+        # pick=True is added back; otherwise the name is saved, so it stays.
+        fit = BestFit(name, values, bool(chi2))
+        _autofits.pop(key, None)
+        _autofits[key] = fit
+        if not isinstance(entry, dict):
+            fits = _manual_fit_store_read(path)
+            fits[key] = {"name": name, "excluded": [], "data": data_text}
+            _manual_fit_store_write(path, fits)
+        if frame is not None:
+            frame.f_globals[name] = fit
+        plain, rich = _autofit_summary(fit, pick=False)
+        pair = _notebook_display()
+        if pair is None:
+            print(plain)
+            return
+        display, _ = pair
+        display({"image/png": png, "text/plain": f"{name}: a best fit made with {fn_name}"},
+                raw=True, metadata={"image/png": {"width": int(round(positions["width"]))}})
+        display({"text/plain": plain, "text/html": rich}, raw=True)
+        return
+
+    import base64
+    widget = widget_class(
+        n=len(x),
+        points=[[f"{float(a):g}", f"{float(c):g}", f"{float(d):g}"] for a, c, d in zip(x, y, dy)],
+        x_values=x.tolist(), excluded=excluded,
+        png=base64.b64encode(png).decode("ascii"), positions=positions,
+    )
+    fit = BestFit(name, values, bool(chi2))
+    fit._widget = widget
+    _autofits.pop(key, None)
+    _autofits[key] = fit                       # newest last
+
+    def remember():
+        fits = _manual_fit_store_read(path)
+        fits[key] = {"name": name, "excluded": list(fit._values["excluded"]),
+                     "data": data_text}
+        _manual_fit_store_write(path, fits)
+
+    remember()
+    if frame is not None:
+        frame.f_globals[name] = fit
+
+    pair = _notebook_display()
+    summary_handle = None
+
+    def refit():
+        chosen = sorted({int(k) for k in widget.excluded if 1 <= int(k) <= len(x)})
+        problem = _autofit_problem(x, chosen)
+        if problem:
+            # The widget checks this first; this only guards against a
+            # choice that reached Python some other way.
+            return f"That choice cannot be fitted: {problem}."
+        new_values = _autofit_fit(x, y, dy, chosen)
+        if any(_as_finite_number(new_values[v]) is None for v in ("m", "b", "dm", "db")):
+            return "No best-fit line could be found for the points left in."
+        new_png, new_positions = _autofit_figure(x, y, dy, new_values, labels, chi2,
+                                                   note, widget.positions["left_edge"])
+        fit._values = new_values
+        widget.positions = new_positions
+        widget.png = base64.b64encode(new_png).decode("ascii")
+        remember()
+        if summary_handle is not None:
+            plain, rich = _autofit_summary(fit)
+            summary_handle.update({"text/plain": plain, "text/html": rich}, raw=True)
+        return ""
+
+    undoing = [False]
+
+    def on_change(change):
+        if undoing[0]:
+            return
+        # Whatever happens, the widget hears back (revision), so it never
+        # waits for a figure that is not coming; a choice that could not be
+        # fitted is undone, so the table shows the points actually fitted.
+        try:
+            message = refit()
+        except Exception:
+            message = ("Something went wrong redrawing the fit. Run this cell again; "
+                       "if that does not help, let your instructor or TA know.")
+        if message and list(widget.excluded) != fit._values["excluded"]:
+            undoing[0] = True
+            try:
+                widget.excluded = list(fit._values["excluded"])
+            finally:
+                undoing[0] = False
+        widget.message = message
+        widget.revision += 1
+
+    widget.observe(on_change, names=["excluded"])
+
+    plain, rich = _autofit_summary(fit)
+    if pair is None:
+        print(plain)
+        return
+    display, _ = pair
+    # One output holding the widget and a still picture, as for manual_fit:
+    # a running notebook shows the widget; anything that cannot show a
+    # widget falls back to the picture, which a re-run (as Restart Kernel and
+    # Run All Cells does) brings up to date with the saved choice.
+    bundle = widget._repr_mimebundle_()
+    bundle = bundle[0] if isinstance(bundle, tuple) else bundle
+    bundle["image/png"] = png
+    bundle["text/plain"] = (f"{name}: a best fit made with {fn_name} "
+                            "(the interactive plot appears in a running notebook)")
+    # The picture is drawn at twice its intended size, for sharpness; the
+    # width keeps it from showing twice as large where it is used.
+    display(bundle, raw=True,
+            metadata={"image/png": {"width": int(round(positions["width"]))}})
+    # The summary is ordinary output, updated as points are left out or put
+    # back, so it is kept when the notebook is saved or exported.
+    summary_handle = display({"text/plain": plain, "text/html": rich}, raw=True,
+                             display_id=True)

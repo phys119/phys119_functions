@@ -15,7 +15,7 @@ and every function explains itself through `help()`.
 | `standard_unc_of_mean(data)` | the standard uncertainty of the mean |
 | `plot_data(x, y, dy, ...)` | a plot of data with error bars; with `m` and `b`, a straight-line model, and with `residuals=True`, the residuals underneath |
 | `plot_residuals(x, y, dy, m, b, ...)` | the same as `plot_data(..., residuals=True)` |
-| `autofit(x, y, dy, ...)` | the best-fit straight line (minimum chi-squared), plotted with its residuals; $m \pm \delta m$, $b \pm \delta b$ and the reduced chi-squared in the legend and printed under the plot, and kept as `autofit1`, `autofit2`, ... (`.m`, `.dm`, `.b`, `.db`, `.chi2`) |
+| `autofit(x, y, dy, ...)` | the best-fit straight line (minimum chi-squared), plotted with its residuals; $m \pm \delta m$, $b \pm \delta b$ and the reduced chi-squared in the legend and printed under the plot, and kept as `autofit1`, `autofit2`, ... (`.m`, `.dm`, `.b`, `.db`, `.chi2`); with `pick=True`, points can be left out of the fit by clicking them or in a table (`.excluded`) |
 | `manual_fit(x, y, dy, ...)` | an interactive fit in the notebook: sliders and number boxes for `m` and `b`, with the residuals updating live |
 
 ## Use in a notebook
@@ -35,6 +35,7 @@ plot_data(x=DxVec, y=FVec, dy=dFVec, m=2.1, b=0, residuals=True,
           y_label="Force (N)")
 manual_fit(DxVec, FVec, dFVec)         # then manual_fit1.m, manual_fit1.b
 autofit(DxVec, FVec, dFVec)            # then autofit1.m, autofit1.dm, ...
+autofit(DxVec, FVec, dFVec, pick=True) # click points to leave them out
 ```
 
 That import also brings in `np`, as a backup for a notebook whose own
@@ -69,6 +70,7 @@ functions.
   message naming the label, rather than matplotlib's long error.
 - `manual_fit` remembers each fit beside the notebook, so re-running the
   cell, even after a restart, brings the line back where it was left.
+  `autofit` remembers the points left out in the same way.
 
 ## Install
 
@@ -79,7 +81,7 @@ carries its own wheel, so the shortest version is:
 
 ```
 python -m pip install --no-deps \
-    https://github.com/phys119/phys119_functions/releases/download/v1.4.0/phys119_functions-1.4.0-py3-none-any.whl
+    https://github.com/phys119/phys119_functions/releases/download/v1.5.0/phys119_functions-1.5.0-py3-none-any.whl
 ```
 
 ## Development

@@ -8,7 +8,7 @@ Three routes. Pick by who needs it.
 | [The whole Jupyter server](#the-whole-jupyter-server) | every account on the hub | yes |
 | [No install at all](#no-install-at-all) | anyone with a notebook and no setup | no |
 
-Replace `v1.4.0` and `1.4.0` throughout with the version you want. The
+Replace `v1.5.0` and `1.5.0` throughout with the version you want. The
 versions available are listed at
 https://github.com/phys119/phys119_functions/releases.
 
@@ -17,7 +17,7 @@ https://github.com/phys119/phys119_functions/releases.
 In a notebook cell:
 
 ```
-%pip install --user --no-deps --no-cache-dir https://github.com/phys119/phys119_functions/releases/download/v1.4.0/phys119_functions-1.4.0-py3-none-any.whl
+%pip install --user --no-deps --no-cache-dir https://github.com/phys119/phys119_functions/releases/download/v1.5.0/phys119_functions-1.5.0-py3-none-any.whl
 ```
 
 **Restart the kernel afterwards** (Kernel > Restart Kernel). Python adds your
@@ -38,7 +38,7 @@ A path under your home directory means the install worked. To remove it,
 Two flags matter. `--user` keeps everything inside your home directory, so
 nothing you do affects other accounts. `--no-deps` leaves the shared
 packages alone. This package needs numpy 1.20 or newer and matplotlib, which
-most hubs already have, and anywidget for `manual_fit` (see below).
+most hubs already have, and anywidget for `autofit` and `manual_fit` (see below).
 
 ## The whole Jupyter server
 
@@ -51,7 +51,7 @@ it below.
 ```
 sudo -H bash -c 'umask 022; /opt/tljh/user/bin/python -m pip install \
      --no-deps --no-cache-dir \
-     https://github.com/phys119/phys119_functions/releases/download/v1.4.0/phys119_functions-1.4.0-py3-none-any.whl'
+     https://github.com/phys119/phys119_functions/releases/download/v1.5.0/phys119_functions-1.5.0-py3-none-any.whl'
 
 sudo /opt/tljh/user/bin/python -m pip check
 ls -ld /opt/tljh/user/lib/python3.10/site-packages/phys119_functions*
@@ -74,12 +74,12 @@ Three parts of that command are worth keeping:
   ssh that often resolves to the operating system's Python, where no student
   will ever see the result.
 
-`manual_fit` also needs anywidget, which draws the fit in the notebook
+`autofit` and `manual_fit` also need anywidget, which draws the fit in the notebook
 through Jupyter's widget support (ipywidgets, which JupyterLab hubs
 usually have). If the shared environment lacks it, install it the same
 way, with `--no-deps`, after checking that its own requirements (psygnal,
 typing_extensions and ipywidgets) are present. Without it, everything else
-works and `manual_fit` says what is missing.
+works and `autofit` and `manual_fit` say what is missing.
 
 To roll back, run the same command with an earlier version in the URL.
 
@@ -91,11 +91,11 @@ repository runs that check and prints one pass or fail verdict.
 
 Download the module and put it beside your notebook:
 
-https://raw.githubusercontent.com/phys119/phys119_functions/v1.4.0/src/phys119_functions.py
+https://raw.githubusercontent.com/phys119/phys119_functions/v1.5.0/src/phys119_functions.py
 
 Python imports a module from the notebook's own folder before any installed
 one, so that file is what `from phys119_functions import *` will use. Nothing
-else is needed beyond numpy, matplotlib and, for `manual_fit`, anywidget.
+else is needed beyond numpy, matplotlib and, for `autofit` and `manual_fit`, anywidget.
 
 This is the easiest way to try a version without touching an installed copy,
 and the easiest way to send the functions to someone who has nothing set up.

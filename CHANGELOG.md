@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.5.0
+
+`autofit` can leave data points out of the fit. `manual_fit` is unchanged.
+
+- `autofit(..., pick=True)` lets students leave points out of the fit and
+  put them back, by clicking a point (in either graph) or unticking it in a
+  table under the graph. The fit, legend, printed line and the result's
+  values use only the points left in; at least 3 points, with two different
+  x values, must stay in. Points are numbered from 1. Without `pick=True`
+  (the default) the plot looks as it did in 1.4.0 and every point is fitted.
+- Points left out are drawn hollow and grey with their number. Once any
+  point is out, the residuals graph is scaled to the points in the fit; a
+  left-out point beyond that scale is shown as a small arrow at the edge,
+  which can be clicked to put it back. `note=True` adds a note at the top of
+  the residuals graph counting such points ("Off-scale points: 3 above, 1
+  below").
+- The choice is remembered beside the notebook, with the fit's name, so
+  running the cell again, even after a restart, leaves the same points out.
+  If x, y or dy have changed since, every point is back in.
+- The result (`autofit1`, ...) also has `.excluded`, the points left out. It
+  still unpacks as `m, b = autofit1`.
+- `autofit` now needs anywidget, as `manual_fit` does.
+- Removed from `autofit`: `residuals=`, `num_model_points=` and `figsize=`.
+  The residuals graph is always shown.
+
 ## 1.4.0 (deployed to the course JupyterHub 2026-10-16)
 
 `autofit` gives the uncertainties in the best-fit slope and intercept, and

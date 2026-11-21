@@ -1,6 +1,11 @@
 """Tests for the plotting functions of phys119_functions: plot_data,
 plot_residuals and autofit, and the label checks they share.
 
+Dev copy (1.5.0.dev0, 2026-11-16): autofit is what was autofit_2, with
+leaving points out; it draws its figure on a bare matplotlib figure, which
+the `shown` fixture records as well. Its widget is tested in
+test_autofit_widget.py.
+
 The first tests use the calls the course notebooks make, with the data from
 the Prelab 05 notebook; later sections cover each feature as it was added.
 
@@ -47,9 +52,19 @@ Y_LABEL = "Force (N)"
 
 @pytest.fixture
 def shown(monkeypatch):
-    """Record each figure at the moment the function shows it."""
+    """Record each figure at the moment the function shows it: plot_data's
+    through pyplot, and autofit's as it is drawn (autofit draws on a bare
+    figure, sent to the widget as a picture, never through pyplot)."""
     figures = []
     monkeypatch.setattr(p.plt, "show", lambda *a, **k: figures.append(plt.gcf()))
+    draw = p._autofit_draw
+
+    def recorded(*args, **kwargs):
+        drawn = draw(*args, **kwargs)
+        figures.append(drawn[0])
+        return drawn
+
+    monkeypatch.setattr(p, "_autofit_draw", recorded)
     yield figures
     plt.close("all")
 
@@ -624,17 +639,30 @@ def test_default_sizes_unchanged(shown):
     p.plot_data(x, y, dy, m=2)
     p.plot_data(x, y, dy, m=2, residuals=True)
     p.autofit(x, y, dy)
-    p.autofit(x, y, dy, residuals=False)
     default = tuple(plt.rcParams["figure.figsize"])
     sizes = [tuple(f.get_size_inches()) for f in shown]
-    assert sizes == [default, default, (7, 6), (7, 6), default]
+    # autofit's figure is plot_data's with 0.4 inch more on the left, for
+    # its fixed crop; the graphs are the same size.
+    assert sizes == [default, default, (7, 6), (7.4, 6)]
 
 
 @pytest.mark.parametrize("residuals", [True, False])
 def test_figsize_honoured_with_and_without_residuals(shown, residuals):
     p.plot_data(x, y, dy, m=2, residuals=residuals, figsize=(5, 8))
-    p.autofit(x, y, dy, residuals=residuals, figsize=(5, 8))
-    assert [tuple(f.get_size_inches()) for f in shown] == [(5, 8), (5, 8)]
+    assert [tuple(f.get_size_inches()) for f in shown] == [(5, 8)]
+
+
+@pytest.mark.parametrize("keyword", [{"residuals": False}, {"figsize": (5, 8)},
+                                     {"num_model_points": 50}])
+def test_autofit_has_no_residuals_figsize_or_num_model_points(shown, capsys, keyword):
+    # Left out of autofit when it gained leaving points out (Joss, 2026-11-16).
+    with pytest.raises(p.Phys119Error):
+        p.autofit(x, y, dy, **keyword)
+    err = capsys.readouterr().err
+    assert err.startswith(
+        f"ERROR: autofit() got an unexpected keyword argument '{next(iter(keyword))}'")
+    assert "Usage (required): autofit(x, y, dy)" in err
+    assert shown == []
 
 
 def test_extra_positional_argument_cannot_skip_the_checks(shown, capsys):
@@ -707,10 +735,10 @@ def test_error_is_checked_before_any_warning(shown, capsys):
     assert "Warning" not in err
 
 
-@pytest.mark.parametrize("fn", ALL_THREE)
+@pytest.mark.parametrize("fn", ["plot_data", "plot_residuals"])
 @pytest.mark.parametrize("bad", [-1, 0, 1, 2.5, "100", True])
 def test_num_model_points_must_be_a_whole_number(shown, capsys, fn, bad):
-    kwargs = {} if fn == "autofit" else {"m": 2.0}
+    kwargs = {"m": 2.0}
     with pytest.raises(p.Phys119Error):
         getattr(p, fn)(x, y, dy, num_model_points=bad, **kwargs)
     assert capsys.readouterr().err.startswith(
@@ -748,7 +776,8 @@ def test_whole_fit_passed_as_m_gets_a_hint(shown, capsys):
         p.plot_data(x, y, dy, m=fit)
     err = capsys.readouterr().err
     assert "needs m to be a number" in err
-    assert "m, b = autofit(...), or use fit.m and fit.b." in err
+    assert (f"{fit.name} holds a whole best fit. Use {fit.name}.m for its\n"
+            f"slope and {fit.name}.b for its intercept.") in err
 
 
 def test_best_fit_survives_copy_and_pickle(shown):
@@ -756,7 +785,8 @@ def test_best_fit_survives_copy_and_pickle(shown):
     import pickle
     fit = autofit_result(x, y, dy)
     for clone in (copy.copy(fit), copy.deepcopy(fit), pickle.loads(pickle.dumps(fit))):
-        assert clone == fit and type(clone) is p.BestFit and clone.m == fit.m
+        assert tuple(clone) == tuple(fit) and type(clone) is p.BestFit
+        assert clone.excluded == fit.excluded and clone._widget is None
 
 
 def test_huge_values_leak_no_numpy_warning(shown):
@@ -1014,7 +1044,7 @@ def grid_on(ax):
     lambda: p.plot_data(DxVec, FVec, dFVec, m=2),
     lambda: p.plot_data(DxVec, FVec, dFVec, m=2, residuals=True),
     lambda: p.plot_residuals(DxVec, FVec, dFVec, m=2),
-    lambda: p.autofit(DxVec, FVec, dFVec, residuals=False),
+    lambda: p.autofit(DxVec, FVec, dFVec),
 ])
 def test_every_panel_has_the_light_grid(shown, call):
     call()
@@ -1289,11 +1319,13 @@ def test_uncertainty_to_two_figures_and_value_to_match(value, uncertainty, plain
 
 
 def test_autofit_prints_the_summary_and_the_names(shown, capsys):
+    # pick is off by default, so .excluded (only useful with pick=True) is not listed.
     fit = autofit_result(DxVec, FVec, dFVec)
     n = fit.name
     assert capsys.readouterr().out == (
         repr(fit) + "\n"
-        f"{n}.m, {n}.dm, {n}.b, {n}.db and {n}.chi2 hold these values at full precision.\n")
+        f"{n}.m, {n}.dm, {n}.b, {n}.db and {n}.chi2 hold these values at "
+        "full precision.\n")
 
 
 def test_chi2_false_leaves_it_out_of_legend_and_summary(shown, capsys):
